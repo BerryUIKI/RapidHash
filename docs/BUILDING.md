@@ -14,22 +14,26 @@ executable when the implementation scaffold is introduced.
 The repository will pin or declare minimum versions once the first scaffold is
 merged. Do not assume globally installed prerelease toolchains.
 
-## Planned Layout and Commands
+## Layout and Validation Commands
 
-The workspace will expose repository-level commands for:
+The workspace provides the following validation commands:
 
-```text
-format          format Rust, TypeScript, and documentation
-lint            run Rust and frontend static analysis
-test            run unit and integration tests
-desktop-dev     launch the desktop application for development
-build           build release binaries for the current platform
-docs-check      validate Markdown and links
+```shell
+# Run all tests, including catalog parity and syntax validation:
+cargo test --workspace
+
+# Run tests specifically for the i18n crate:
+cargo test -p rapidhash-i18n
+
+# Lint all workspace targets with warnings denied:
+cargo clippy --workspace --all-targets -- -D warnings
+
+# Check code formatting without making changes:
+cargo fmt --all --check
+
+# Format code across the workspace:
+cargo fmt --all
 ```
-
-Exact commands will be added to this document with the scaffold. Contributors
-should not need to discover separate package-manager invocations for routine
-validation.
 
 ## Platform Notes
 
