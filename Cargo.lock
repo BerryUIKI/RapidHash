@@ -173,6 +173,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rapidhash-formats"
+version = "0.1.0"
+dependencies = [
+ "rapidhash-core",
+ "thiserror",
+]
+
+[[package]]
 name = "rapidhash-i18n"
 version = "0.1.0"
 dependencies = [

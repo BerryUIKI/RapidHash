@@ -2,6 +2,7 @@
 members = [
     "crates/rapidhash-i18n",
     "crates/rapidhash-core",
+    "crates/rapidhash-formats",
 ]
 resolver = "2"
 
