@@ -4,6 +4,7 @@ members = [
     "crates/rapidhash-core",
     "crates/rapidhash-formats",
     "crates/rapidhash-cli",
+    "apps/desktop/src-tauri",
 ]
 resolver = "2"
 

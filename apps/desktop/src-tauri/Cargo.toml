@@ -1,0 +1,24 @@
+[package]
+name = "rapidhash-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+description = "Tauri 2 desktop application for RapidHash"
+
+[lib]
+name = "rapidhash_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+fluent-bundle = "0.16"
+rapidhash-core = { path = "../../../crates/rapidhash-core" }
+rapidhash-formats = { path = "../../../crates/rapidhash-formats" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tauri = { version = "2", features = [] }
+unic-langid = "0.9"
