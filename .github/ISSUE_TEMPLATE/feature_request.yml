@@ -1,0 +1,42 @@
+name: Feature request
+description: Propose one product improvement
+title: "feature: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the user need without assuming a solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed outcome
+      description: Explain the behavior and its scope.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: true
+  - type: textarea
+    id: platforms
+    attributes:
+      label: Platform and compatibility considerations
+      description: Identify affected operating systems, formats, algorithms, or interfaces.
+  - type: textarea
+    id: risks
+    attributes:
+      label: Security, privacy, and performance considerations
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Confirmation
+      options:
+        - label: I searched for existing requests and kept this proposal to one outcome.
+          required: true

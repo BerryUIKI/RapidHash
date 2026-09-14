@@ -1,0 +1,8 @@
+# The repository owner reviews project-wide and sensitive changes.
+* @BerryUIKI
+
+# Security and release policy require explicit owner review.
+/SECURITY.md @BerryUIKI
+/docs/SECURITY_MODEL.md @BerryUIKI
+/docs/RELEASING.md @BerryUIKI
+/.github/ @BerryUIKI
