@@ -1,0 +1,17 @@
+[package]
+name = "rapidhash-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+description = "Core domain types, hashing engine, and execution models for RapidHash"
+
+[dependencies]
+blake3 = "1.5"
+crc32fast = "1.4"
+sha2 = "0.10"
+thiserror = "2.0"
+
+[dev-dependencies]
+hex-literal = "1.1"

@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/rapidhash-i18n",
+    "crates/rapidhash-core",
 ]
 resolver = "2"
 
