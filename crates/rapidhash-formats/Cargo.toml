@@ -1,0 +1,12 @@
+[package]
+name = "rapidhash-formats"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+description = "Checksum manifest parsing and serialization for RapidHash"
+
+[dependencies]
+rapidhash-core = { path = "../rapidhash-core" }
+thiserror = "2.0"

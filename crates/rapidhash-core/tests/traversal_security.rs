@@ -98,8 +98,8 @@ fn traversal_is_deterministic_and_respects_options() {
 
     // Default traversal: hidden included, sorted deterministically
     let options = TraversalOptions::default();
-    let files =
-        traverse_paths(std::slice::from_ref(&temp_dir), &options, None).expect("traversal succeeds");
+    let files = traverse_paths(std::slice::from_ref(&temp_dir), &options, None)
+        .expect("traversal succeeds");
 
     let relative_paths: Vec<String> = files
         .iter()
@@ -127,9 +127,8 @@ fn traversal_is_deterministic_and_respects_options() {
         include_hidden: false,
         ..Default::default()
     };
-    let files_no_hidden =
-        traverse_paths(std::slice::from_ref(&temp_dir), &no_hidden_opts, None)
-            .expect("traversal succeeds");
+    let files_no_hidden = traverse_paths(std::slice::from_ref(&temp_dir), &no_hidden_opts, None)
+        .expect("traversal succeeds");
 
     let rel_no_hidden: Vec<String> = files_no_hidden
         .iter()
