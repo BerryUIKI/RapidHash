@@ -104,6 +104,10 @@ permission denied, changed during read, I/O failure, cancelled, and internal
 failure. User-facing messages are localized in the presentation layer. Internal
 errors retain source chains for diagnostics without exposing secrets by default.
 
+Localization occurs only in presentation adapters. Core errors carry stable
+message identifiers and typed arguments so the desktop application and CLI can
+use the shared Fluent catalogs without parsing English error text.
+
 One failed item does not fail unrelated items. Process exit status summarizes
 the complete job according to the CLI contract.
 
@@ -132,3 +136,4 @@ must be safe to share after documented redaction.
 - [ADR-0001: Rust for the core](decisions/0001-rust-core.md)
 - [ADR-0002: Tauri desktop architecture](decisions/0002-tauri-desktop.md)
 - [ADR-0003: Apache-2.0 licensing](decisions/0003-apache-2-license.md)
+- [ADR-0004: Fluent-based internationalization](decisions/0004-fluent-i18n.md)
