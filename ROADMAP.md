@@ -14,6 +14,7 @@ feedback.
 ## Phase 1: Hashing Core and CLI
 
 - Create the Rust workspace and core domain model.
+- Establish shared Fluent catalogs, locale negotiation, and catalog validation.
 - Implement bounded streaming file reads and cancellation.
 - Add CRC32, CRC32C, MD5, SHA-1, SHA-256, SHA-384, SHA-512, and BLAKE3.
 - Add deterministic CLI output and machine-readable JSON output.
@@ -25,7 +26,8 @@ feedback.
 - Support file and directory selection and drag-and-drop.
 - Display queued, active, completed, cancelled, and failed tasks.
 - Copy digests and verify a pasted digest.
-- Support English and Simplified Chinese UI resources.
+- Connect the desktop adapter to the shared English and Simplified Chinese
+  catalogs.
 - Meet keyboard and high-contrast accessibility requirements.
 
 ## Phase 3: Manifest Workflows
