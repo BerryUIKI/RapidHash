@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { 
   Calculator, 
   CheckCircle2, 
@@ -6,17 +6,22 @@ import {
   Settings as SettingsIcon, 
   Trash2, 
   Play, 
-  Copy, 
-  Check,
-  FolderPlus,
-  FilePlus,
-  UploadCloud,
-  FileSearch
+  FolderPlus, 
+  FilePlus, 
+  UploadCloud, 
+  FileSearch,
+  Edit3,
+  Save,
+  Minimize2,
+  Maximize2
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import { Locale, FALLBACK_STRINGS } from "./i18n";
+import { FoldableHash } from "./components/FoldableHash";
+import { ContextMenu, ContextMenuPosition, ContextMenuItemData } from "./components/ContextMenu";
+import { truncateMiddle, formatBytes } from "./utils/format";
 
 interface AlgorithmInfo {
   id: string;
@@ -32,6 +37,14 @@ interface FileResultDto {
   size_bytes?: number;
   digests: Record<string, string>;
   status?: string;
+  error?: string;
+  filename_crc?: string;
+}
+
+interface RenameResultDto {
+  old_path: string;
+  new_path: string;
+  success: boolean;
   error?: string;
 }
 
@@ -52,12 +65,20 @@ export function App() {
   const [theme, setTheme] = useState<"auto" | "light" | "dark">("auto");
   const [strings, setStrings] = useState<Record<string, string>>(FALLBACK_STRINGS.en);
   const [algorithms, setAlgorithms] = useState<AlgorithmInfo[]>([]);
-  const [selectedAlgorithms, setSelectedAlgorithms] = useState<string[]>(["sha256"]);
+  const [selectedAlgorithms, setSelectedAlgorithms] = useState<string[]>(["crc32", "sha256"]);
   const [inputPaths, setInputPaths] = useState<string[]>([]);
   const [results, setResults] = useState<FileResultDto[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [autoCalculate, setAutoCalculate] = useState<boolean>(true);
+  const [allFolded, setAllFolded] = useState<boolean | null>(true);
+
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<{
+    position: ContextMenuPosition;
+    item: ContextMenuItemData;
+  } | null>(null);
 
   // Verification state
   const [verifyPath, setVerifyPath] = useState("");
@@ -65,6 +86,9 @@ export function App() {
   const [verifyAlgorithm, setVerifyAlgorithm] = useState("sha256");
   const [verifyManifestPath, setVerifyManifestPath] = useState("");
   const [manifestSummary, setManifestSummary] = useState<ManifestSummaryDto | null>(null);
+
+  // Generation state
+  const [generateFormat, setGenerateFormat] = useState<"sfv" | "sha256">("sfv");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -90,9 +114,9 @@ export function App() {
         setAlgorithms(algos);
       } catch {
         setAlgorithms([
+          { id: "crc32", name: "CRC32", category: "NonCryptographic", is_recommended: false, digest_length_bytes: 4 },
           { id: "sha256", name: "SHA-256", category: "ModernCryptographic", is_recommended: true, digest_length_bytes: 32 },
           { id: "blake3", name: "BLAKE3", category: "ModernCryptographic", is_recommended: true, digest_length_bytes: 32 },
-          { id: "crc32", name: "CRC32", category: "NonCryptographic", is_recommended: false, digest_length_bytes: 4 },
         ]);
       }
     }
@@ -114,6 +138,34 @@ export function App() {
     }
   }, [theme]);
 
+  // Execute calculation for specific paths
+  const calculatePaths = async (pathsToCalculate: string[], algosToUse?: string[]) => {
+    if (pathsToCalculate.length === 0) return;
+    setIsProcessing(true);
+    try {
+      const algos = algosToUse || selectedAlgorithms;
+      const res = await invoke<FileResultDto[]>("calculate_hashes", {
+        paths: pathsToCalculate,
+        algorithmIds: algos,
+      });
+      setResults((prev) => {
+        // Merge or replace by path
+        const resMap = new Map<string, FileResultDto>();
+        for (const item of prev) {
+          resMap.set(item.path, item);
+        }
+        for (const item of res) {
+          resMap.set(item.path, item);
+        }
+        return Array.from(resMap.values());
+      });
+    } catch (e) {
+      console.error("Calculation failed:", e);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   // Tauri Drag-and-drop listener
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -127,7 +179,7 @@ export function App() {
             setIsDragOver(false);
             const droppedPaths = event.payload.paths;
             if (droppedPaths && droppedPaths.length > 0) {
-              addInputPaths(droppedPaths);
+              handleIncomingPaths(droppedPaths);
             }
           } else {
             setIsDragOver(false);
@@ -141,11 +193,9 @@ export function App() {
     return () => {
       if (unlisten) unlisten();
     };
-  }, []);
+  }, [autoCalculate, selectedAlgorithms]);
 
-  const t = (key: string): string => strings[key] || key;
-
-  const addInputPaths = (newPaths: string[]) => {
+  const handleIncomingPaths = (newPaths: string[]) => {
     setInputPaths((prev) => {
       const set = new Set(prev);
       for (const p of newPaths) {
@@ -153,7 +203,13 @@ export function App() {
       }
       return Array.from(set);
     });
+
+    if (autoCalculate) {
+      calculatePaths(newPaths);
+    }
   };
+
+  const t = (key: string): string => strings[key] || key;
 
   const handlePickFiles = async () => {
     try {
@@ -164,7 +220,7 @@ export function App() {
       });
       if (selected) {
         const paths = Array.isArray(selected) ? selected : [selected];
-        addInputPaths(paths);
+        handleIncomingPaths(paths);
       }
     } catch {
       fileInputRef.current?.click();
@@ -179,7 +235,7 @@ export function App() {
         title: t("calculate-add-folder"),
       });
       if (selected && typeof selected === "string") {
-        addInputPaths([selected]);
+        handleIncomingPaths([selected]);
       }
     } catch {
       folderInputRef.current?.click();
@@ -211,29 +267,133 @@ export function App() {
     for (let i = 0; i < files.length; i++) {
       paths.push(files[i].name);
     }
-    addInputPaths(paths);
+    handleIncomingPaths(paths);
   };
 
-  const handleCopy = (text: string, key: string) => {
+  const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
-    setCopiedKey(key);
+    setCopiedKey(text);
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
   const runCalculate = async () => {
     if (inputPaths.length === 0) return;
+    calculatePaths(inputPaths);
+  };
+
+  // RapidCRC Feature: Rename file to embed CRC into filename
+  const handleWriteCrc = async (filePath: string) => {
     setIsProcessing(true);
     try {
-      const res = await invoke<FileResultDto[]>("calculate_hashes", {
-        paths: inputPaths,
-        algorithmIds: selectedAlgorithms,
+      const res = await invoke<RenameResultDto>("write_crc_to_filename", {
+        filePath,
       });
-      setResults(res);
+      if (res.success) {
+        // Update results and inputPaths
+        setResults((prev) =>
+          prev.map((item) => {
+            if (item.path === res.old_path) {
+              const newFileName = res.new_path.split(/[\/\\]/).pop() || item.file_name;
+              return {
+                ...item,
+                path: res.new_path,
+                file_name: newFileName,
+                status: "Match",
+              };
+            }
+            return item;
+          })
+        );
+        setInputPaths((prev) =>
+          prev.map((p) => (p === res.old_path ? res.new_path : p))
+        );
+      } else {
+        alert(`Failed to rename file: ${res.error}`);
+      }
     } catch (e) {
-      console.error("Calculation failed:", e);
+      console.error("write_crc_to_filename error:", e);
+      alert(`Error renaming file: ${e}`);
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  // RapidCRC Feature: Batch write CRC for all completed items
+  const handleBatchWriteCrc = async () => {
+    if (results.length === 0) return;
+    setIsProcessing(true);
+    try {
+      for (const item of results) {
+        if (item.digests.crc32) {
+          const res = await invoke<RenameResultDto>("write_crc_to_filename", {
+            filePath: item.path,
+          });
+          if (res.success) {
+            setResults((prev) =>
+              prev.map((it) => {
+                if (it.path === res.old_path) {
+                  const newFileName = res.new_path.split(/[\/\\]/).pop() || it.file_name;
+                  return {
+                    ...it,
+                    path: res.new_path,
+                    file_name: newFileName,
+                    status: "Match",
+                  };
+                }
+                return it;
+              })
+            );
+            setInputPaths((prev) =>
+              prev.map((p) => (p === res.old_path ? res.new_path : p))
+            );
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Batch write CRC error:", e);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Save Manifest (.sfv or .sha256)
+  const handleSaveManifest = async (format: "sfv" | "sha256") => {
+    if (results.length === 0) return;
+    try {
+      const ext = format === "sfv" ? "sfv" : "sha256";
+      const savePath = await save({
+        defaultPath: `checksums.${ext}`,
+        filters: [{ name: `${format.toUpperCase()} Manifest`, extensions: [ext] }],
+      });
+      if (savePath && typeof savePath === "string") {
+        await invoke("save_manifest_file", {
+          outputPath: savePath,
+          format,
+          items: results,
+        });
+        alert(`Manifest saved successfully to:\n${savePath}`);
+      }
+    } catch (e) {
+      console.error("Save manifest error:", e);
+      alert(`Failed to save manifest: ${e}`);
+    }
+  };
+
+  const handleRowContextMenu = (e: React.MouseEvent, row: FileResultDto) => {
+    e.preventDefault();
+    setContextMenu({
+      position: { x: e.clientX, y: e.clientY },
+      item: {
+        fileName: row.file_name,
+        path: row.path,
+        digests: row.digests,
+      },
+    });
+  };
+
+  const handleRemoveItem = (path: string) => {
+    setInputPaths((prev) => prev.filter((p) => p !== path));
+    setResults((prev) => prev.filter((r) => r.path !== path));
   };
 
   const runCompareChecksum = async () => {
@@ -289,6 +449,18 @@ export function App() {
         onChange={handleBrowserFileInput}
       />
 
+      {/* Row Right-Click Context Menu */}
+      {contextMenu && (
+        <ContextMenu
+          position={contextMenu.position}
+          item={contextMenu.item}
+          onClose={() => setContextMenu(null)}
+          onCopyText={handleCopy}
+          onWriteCrc={handleWriteCrc}
+          onRemove={handleRemoveItem}
+        />
+      )}
+
       <aside className="sidebar">
         <div className="sidebar-header">
           <Calculator size={24} color="var(--accent-color)" />
@@ -343,7 +515,7 @@ export function App() {
               {inputPaths.length > 0 && (
                 <div style={{ marginTop: 8 }}>
                   <span className="badge">
-                    {inputPaths.length} items queued
+                    {inputPaths.length} items loaded
                   </span>
                 </div>
               )}
@@ -362,11 +534,66 @@ export function App() {
                 <FolderPlus size={16} />
                 <span>{t("calculate-add-folder")}</span>
               </button>
+
+              {/* RapidCRC Feature: Batch CRC into Filename */}
+              <button
+                className="btn"
+                onClick={handleBatchWriteCrc}
+                disabled={isProcessing || results.length === 0}
+                title="Write computed CRC32 into filenames (e.g. video [4E2A10FB].mkv)"
+              >
+                <Edit3 size={16} color="var(--accent-color)" />
+                <span>{t("action-crc-into-filename")}</span>
+              </button>
+
+              {/* Export Manifest */}
+              <button
+                className="btn"
+                onClick={() => handleSaveManifest("sfv")}
+                disabled={isProcessing || results.length === 0}
+                title="Export SFV checksum manifest"
+              >
+                <Save size={16} />
+                <span>.SFV</span>
+              </button>
+
+              <button
+                className="btn"
+                onClick={() => handleSaveManifest("sha256")}
+                disabled={isProcessing || results.length === 0}
+                title="Export SHA-256 checksum manifest"
+              >
+                <Save size={16} />
+                <span>.SHA256</span>
+              </button>
+
+              {/* Toggle hash folding */}
+              <button
+                className="btn"
+                onClick={() => setAllFolded(allFolded === true ? false : true)}
+                title={allFolded ? t("action-expand-all") : t("action-fold-all")}
+              >
+                {allFolded ? <Maximize2 size={16} /> : <Minimize2 size={16} />}
+                <span>{allFolded ? t("action-expand-all") : t("action-fold-all")}</span>
+              </button>
+
               <button className="btn" onClick={() => { setInputPaths([]); setResults([]); }}>
                 <Trash2 size={16} />
                 <span>{t("calculate-clear-all")}</span>
               </button>
-              <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+
+              {/* Auto calculate toggle */}
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: "0.85rem", cursor: "pointer", marginLeft: 4 }}>
+                <input
+                  type="checkbox"
+                  checked={autoCalculate}
+                  onChange={(e) => setAutoCalculate(e.target.checked)}
+                />
+                <span>{t("auto-calculate-label")}</span>
+              </label>
+
+              {/* Algorithm selections */}
+              <div style={{ marginLeft: "auto", display: "flex", gap: 10, alignItems: "center" }}>
                 <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>{t("table-column-algorithm")}:</span>
                 {algorithms.map((algo) => (
                   <label key={algo.id} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: "0.85rem", cursor: "pointer" }}>
@@ -391,63 +618,81 @@ export function App() {
               <table>
                 <thead>
                   <tr>
-                    <th>{t("table-column-name")}</th>
+                    <th className="col-filename">{t("table-column-name")}</th>
+                    <th>{t("table-column-status")}</th>
                     <th>{t("table-column-size")}</th>
                     <th>{t("table-column-algorithm")}</th>
                     <th>{t("table-column-digest")}</th>
-                    <th style={{ width: 80 }}>{t("table-column-actions")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {results.length === 0 && inputPaths.length > 0 ? (
-                    inputPaths.map((p, idx) => (
-                      <tr key={idx}>
-                        <td title={p}>{p.split(/[\/\\]/).pop() || p}</td>
-                        <td>-</td>
-                        <td>{selectedAlgorithms.join(", ").toUpperCase()}</td>
-                        <td style={{ color: "var(--text-secondary)", fontStyle: "italic" }}>Queued for calculation</td>
-                        <td>-</td>
-                      </tr>
-                    ))
+                    inputPaths.map((p, idx) => {
+                      const name = p.split(/[\/\\]/).pop() || p;
+                      return (
+                        <tr key={idx}>
+                          <td className="col-filename" title={p}>
+                            <span className="cell-truncate-middle">{truncateMiddle(name, 36)}</span>
+                          </td>
+                          <td>
+                            <span className="badge">Queued</span>
+                          </td>
+                          <td>-</td>
+                          <td>{selectedAlgorithms.join(", ").toUpperCase()}</td>
+                          <td style={{ color: "var(--text-secondary)", fontStyle: "italic" }}>Calculating...</td>
+                        </tr>
+                      );
+                    })
                   ) : results.length === 0 ? (
                     <tr>
                       <td colSpan={5} style={{ textAlign: "center", padding: 30, color: "var(--text-secondary)" }}>
-                        No items added yet. Click or drop files to begin.
+                        No items added yet. Drag & drop files or click to add.
                       </td>
                     </tr>
                   ) : (
                     results.map((row, idx) => (
-                      <tr key={idx}>
-                        <td title={row.path}>{row.file_name}</td>
-                        <td>{row.size_bytes !== undefined ? `${(row.size_bytes / 1024).toFixed(1)} KB` : "-"}</td>
+                      <tr 
+                        key={idx}
+                        onContextMenu={(e) => handleRowContextMenu(e, row)}
+                        style={{ cursor: "context-menu" }}
+                      >
+                        <td className="col-filename" title={row.path}>
+                          <span className="cell-truncate-middle">{truncateMiddle(row.file_name, 36)}</span>
+                        </td>
+                        <td>
+                          {row.status === "Match" || row.status === "verification-status-match" ? (
+                            <span className="status-badge status-match">
+                              {row.filename_crc ? "Match (CRC)" : t("verification-status-match")}
+                            </span>
+                          ) : row.status === "Mismatch" || row.status === "verification-status-mismatch" ? (
+                            <span className="status-badge status-mismatch">
+                              {row.filename_crc ? "Mismatch (CRC)" : t("verification-status-mismatch")}
+                            </span>
+                          ) : row.error ? (
+                            <span className="status-badge status-mismatch">Error</span>
+                          ) : (
+                            <span className="status-badge status-match" style={{ opacity: 0.75 }}>OK</span>
+                          )}
+                        </td>
+                        <td>{formatBytes(row.size_bytes)}</td>
                         <td>{Object.keys(row.digests).join(", ").toUpperCase()}</td>
                         <td>
                           {row.error ? (
                             <span style={{ color: "var(--status-mismatch)" }}>{row.error}</span>
                           ) : (
-                            Object.entries(row.digests).map(([algo, hex]) => (
-                              <div key={algo} className="digest-code">
-                                <span style={{ color: "var(--text-secondary)", marginRight: 6 }}>{algo.toUpperCase()}:</span>
-                                {hex}
-                              </div>
-                            ))
+                            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                              {Object.entries(row.digests).map(([algo, hex]) => (
+                                <FoldableHash
+                                  key={algo}
+                                  algo={algo}
+                                  hash={hex}
+                                  forceFolded={allFolded}
+                                  onCopy={handleCopy}
+                                  isCopied={copiedKey === hex}
+                                />
+                              ))}
+                            </div>
                           )}
-                        </td>
-                        <td>
-                          {Object.entries(row.digests).map(([algo, hex]) => {
-                            const key = `${idx}-${algo}`;
-                            return (
-                              <button 
-                                key={key}
-                                className="btn"
-                                style={{ padding: "4px 8px" }}
-                                onClick={() => handleCopy(hex, key)}
-                                title={`Copy ${algo.toUpperCase()} digest`}
-                              >
-                                {copiedKey === key ? <Check size={14} color="var(--status-match)" /> : <Copy size={14} />}
-                              </button>
-                            );
-                          })}
                         </td>
                       </tr>
                     ))
@@ -502,9 +747,9 @@ export function App() {
                     onChange={(e) => setVerifyAlgorithm(e.target.value)}
                     style={{ padding: 8, borderRadius: 6, border: "1px solid var(--border-color)", background: "var(--bg-secondary)", color: "var(--text-primary)" }}
                   >
+                    <option value="crc32">CRC32</option>
                     <option value="sha256">SHA-256</option>
                     <option value="blake3">BLAKE3</option>
-                    <option value="crc32">CRC32</option>
                   </select>
                 </div>
               </div>
@@ -516,7 +761,7 @@ export function App() {
 
             {/* Section 2: Verify Checksum Manifest */}
             <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: 16, border: "1px solid var(--border-color)", borderRadius: 8 }}>
-              <div style={{ fontWeight: 600, fontSize: "1rem" }}>Manifest Verification (.sha256 / .sfv)</div>
+              <div style={{ fontWeight: 600, fontSize: "1rem" }}>Manifest Verification (.sfv / .sha256)</div>
               <label style={{ fontSize: "0.85rem", fontWeight: 600 }}>{t("verify-manifest-input")}</label>
               <div style={{ display: "flex", gap: 8 }}>
                 <input 
@@ -550,7 +795,7 @@ export function App() {
                 <table>
                   <thead>
                     <tr>
-                      <th>{t("table-column-name")}</th>
+                      <th className="col-filename">{t("table-column-name")}</th>
                       <th>{t("table-column-status")}</th>
                       <th>{t("table-column-algorithm")}</th>
                       <th>{t("table-column-digest")}</th>
@@ -558,8 +803,13 @@ export function App() {
                   </thead>
                   <tbody>
                     {results.map((row, idx) => (
-                      <tr key={idx}>
-                        <td title={row.path}>{row.file_name}</td>
+                      <tr 
+                        key={idx}
+                        onContextMenu={(e) => handleRowContextMenu(e, row)}
+                      >
+                        <td className="col-filename" title={row.path}>
+                          <span className="cell-truncate-middle">{truncateMiddle(row.file_name, 36)}</span>
+                        </td>
                         <td>
                           {row.status === "verification-status-match" || row.status === "Match" ? (
                             <span className="status-badge status-match">{t("verification-status-match")}</span>
@@ -570,7 +820,20 @@ export function App() {
                           )}
                         </td>
                         <td>{Object.keys(row.digests).join(", ").toUpperCase()}</td>
-                        <td className="digest-code">{Object.values(row.digests).join(", ")}</td>
+                        <td>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                            {Object.entries(row.digests).map(([algo, hex]) => (
+                              <FoldableHash
+                                key={algo}
+                                algo={algo}
+                                hash={hex}
+                                forceFolded={allFolded}
+                                onCopy={handleCopy}
+                                isCopied={copiedKey === hex}
+                              />
+                            ))}
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -591,15 +854,33 @@ export function App() {
               <UploadCloud size={40} color="var(--accent-color)" />
               <span className="drop-zone-text">{t("calculate-drop-zone")}</span>
               <span className="drop-zone-hint">Add files or directories to include in manifest</span>
-              {inputPaths.length > 0 && (
+              {results.length > 0 && (
                 <span className="badge" style={{ marginTop: 8 }}>
-                  {inputPaths.length} items selected
+                  {results.length} items ready for manifest
                 </span>
               )}
             </div>
-            <div className="action-bar">
-              <button className="btn btn-primary" disabled={inputPaths.length === 0}>
-                {t("nav-generate")} Manifest (.sha256)
+
+            <div style={{ display: "flex", gap: 16, alignItems: "center", marginTop: 8 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 500 }}>
+                Format:
+                <select
+                  value={generateFormat}
+                  onChange={(e) => setGenerateFormat(e.target.value as "sfv" | "sha256")}
+                  style={{ padding: 6, borderRadius: 6, border: "1px solid var(--border-color)", background: "var(--bg-secondary)", color: "var(--text-primary)" }}
+                >
+                  <option value="sfv">SFV (.sfv - CRC32)</option>
+                  <option value="sha256">GNU SHA-256 (.sha256)</option>
+                </select>
+              </label>
+
+              <button 
+                className="btn btn-primary" 
+                onClick={() => handleSaveManifest(generateFormat)}
+                disabled={results.length === 0}
+              >
+                <Save size={16} />
+                <span>Save {generateFormat.toUpperCase()} Manifest</span>
               </button>
             </div>
           </div>

@@ -51,3 +51,11 @@ settings-reset = 恢复默认设置
 a11y-progress-label = 校验和计算进度
 a11y-results-table = 校验和结果表格
 a11y-copy-digest = 复制 { $path } 的摘要
+
+# RapidCRC 特性操作
+action-crc-into-filename = CRC 写入文件名
+action-save-manifest = 导出校验清单
+action-fold-all = 折叠哈希
+action-expand-all = 展开哈希
+auto-calculate-label = 添加后自动计算
+

@@ -51,3 +51,11 @@ settings-reset = Reset to Defaults
 a11y-progress-label = Checksum calculation progress
 a11y-results-table = Checksum results table
 a11y-copy-digest = Copy digest for { $path }
+
+# RapidCRC feature actions
+action-crc-into-filename = CRC into Filename
+action-save-manifest = Export Manifest
+action-fold-all = Fold Hashes
+action-expand-all = Expand Hashes
+auto-calculate-label = Auto-calculate on drop
+
