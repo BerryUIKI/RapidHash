@@ -57,5 +57,7 @@ action-crc-into-filename = CRC into Filename
 action-save-manifest = Export Manifest
 action-fold-all = Fold Hashes
 action-expand-all = Expand Hashes
+action-hash-mode-auto = Adaptive Hashes
 auto-calculate-label = Auto-calculate on drop
+
 

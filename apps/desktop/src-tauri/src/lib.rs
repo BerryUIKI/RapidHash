@@ -148,6 +148,7 @@ fn get_locale_strings(locale: String) -> BTreeMap<String, String> {
         "action-save-manifest",
         "action-fold-all",
         "action-expand-all",
+        "action-hash-mode-auto",
         "auto-calculate-label",
     ];
 
