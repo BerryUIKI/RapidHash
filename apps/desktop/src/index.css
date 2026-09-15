@@ -130,11 +130,17 @@ body {
   gap: 12px;
   background-color: var(--bg-secondary);
   cursor: pointer;
-  transition: border-color 0.2s;
+  transition: all 0.2s ease;
 }
 
 .drop-zone:hover {
   border-color: var(--accent-color);
+}
+
+.drop-zone.drag-active {
+  border-color: var(--accent-color);
+  background-color: var(--bg-tertiary);
+  transform: scale(1.005);
 }
 
 .drop-zone-text {
@@ -181,6 +187,17 @@ body {
 
 .btn-primary:hover {
   background-color: var(--accent-hover);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  background-color: var(--bg-tertiary);
+  color: var(--text-secondary);
 }
 
 .table-wrapper {
