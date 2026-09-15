@@ -269,18 +269,43 @@ td {
   cursor: pointer;
   padding: 2px 6px;
   border-radius: 4px;
-  transition: all 0.15s ease-in-out;
+  transition: background-color 0.15s ease-in-out;
   display: inline-block;
+  white-space: nowrap;
 }
 
 .digest-hash-foldable:hover {
   background-color: var(--bg-tertiary);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
-.digest-hash-foldable.is-hovered {
-  border-color: var(--accent-color) !important;
+.digest-popover {
+  position: fixed;
+  z-index: 9999;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.85rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  animation: popoverFadeIn 0.15s ease-out;
+  pointer-events: auto;
 }
+
+@keyframes popoverFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 
 .status-badge {
   display: inline-block;
