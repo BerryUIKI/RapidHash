@@ -17,7 +17,7 @@ interface ContextMenuProps {
   item: ContextMenuItemData;
   onClose: () => void;
   onCopyText: (text: string) => void;
-  onWriteCrc: (path: string) => void;
+  onWriteCrc: (path: string, crcHex?: string) => void;
   onRemove: (path: string) => void;
 }
 
@@ -126,7 +126,7 @@ export function ContextMenu({
       <button
         className="menu-item"
         onClick={() => {
-          onWriteCrc(item.path);
+          onWriteCrc(item.path, item.digests.crc32);
           onClose();
         }}
         style={menuItemStyle}

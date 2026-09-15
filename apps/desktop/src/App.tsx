@@ -44,6 +44,7 @@ interface FileResultDto {
 interface RenameResultDto {
   old_path: string;
   new_path: string;
+  crc_hex?: string;
   success: boolean;
   error?: string;
 }
@@ -99,6 +100,25 @@ export function App() {
 
   // Generation state
   const [generateFormat, setGenerateFormat] = useState<"sfv" | "sha256">("sfv");
+
+  // CRC into filename format configuration
+  const [crcPattern, setCrcPattern] = useState<string>(() => {
+    return localStorage.getItem("rapidhash_crc_pattern") || "{name} [{crc}]";
+  });
+  const [crcUppercase, setCrcUppercase] = useState<boolean>(() => {
+    const saved = localStorage.getItem("rapidhash_crc_uppercase");
+    return saved !== null ? saved === "true" : true;
+  });
+
+  const updateCrcPattern = (pattern: string) => {
+    setCrcPattern(pattern);
+    localStorage.setItem("rapidhash_crc_pattern", pattern);
+  };
+
+  const updateCrcUppercase = (uppercase: boolean) => {
+    setCrcUppercase(uppercase);
+    localStorage.setItem("rapidhash_crc_uppercase", uppercase.toString());
+  };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -292,22 +312,37 @@ export function App() {
   };
 
   // RapidCRC Feature: Rename file to embed CRC into filename
-  const handleWriteCrc = async (filePath: string) => {
+  const handleWriteCrc = async (filePath: string, explicitCrcHex?: string) => {
     setIsProcessing(true);
     try {
+      const existingItem = results.find((r) => r.path === filePath);
+      const crcHex = explicitCrcHex || existingItem?.digests?.crc32 || null;
+
       const res = await invoke<RenameResultDto>("write_crc_to_filename", {
         filePath,
+        crcHex,
+        options: {
+          pattern: crcPattern,
+          uppercase: crcUppercase,
+        },
       });
+
       if (res.success) {
         // Update results and inputPaths
         setResults((prev) =>
           prev.map((item) => {
             if (item.path === res.old_path) {
               const newFileName = res.new_path.split(/[\/\\]/).pop() || item.file_name;
+              const newDigests = { ...item.digests };
+              if (res.crc_hex) {
+                newDigests.crc32 = res.crc_hex.toLowerCase();
+              }
               return {
                 ...item,
                 path: res.new_path,
                 file_name: newFileName,
+                digests: newDigests,
+                filename_crc: res.crc_hex || item.filename_crc,
                 status: "Match",
               };
             }
@@ -318,7 +353,7 @@ export function App() {
           prev.map((p) => (p === res.old_path ? res.new_path : p))
         );
       } else {
-        alert(`Failed to rename file: ${res.error}`);
+        alert(res.error || "Failed to rename file");
       }
     } catch (e) {
       console.error("write_crc_to_filename error:", e);
@@ -328,25 +363,39 @@ export function App() {
     }
   };
 
-  // RapidCRC Feature: Batch write CRC for all completed items
+  // RapidCRC Feature: Batch write CRC for all items
   const handleBatchWriteCrc = async () => {
     if (results.length === 0) return;
     setIsProcessing(true);
+    let successCount = 0;
+    let errorCount = 0;
     try {
       for (const item of results) {
-        if (item.digests.crc32) {
+        try {
           const res = await invoke<RenameResultDto>("write_crc_to_filename", {
             filePath: item.path,
+            crcHex: item.digests?.crc32 || null,
+            options: {
+              pattern: crcPattern,
+              uppercase: crcUppercase,
+            },
           });
           if (res.success) {
+            successCount++;
             setResults((prev) =>
               prev.map((it) => {
                 if (it.path === res.old_path) {
                   const newFileName = res.new_path.split(/[\/\\]/).pop() || it.file_name;
+                  const newDigests = { ...it.digests };
+                  if (res.crc_hex) {
+                    newDigests.crc32 = res.crc_hex.toLowerCase();
+                  }
                   return {
                     ...it,
                     path: res.new_path,
                     file_name: newFileName,
+                    digests: newDigests,
+                    filename_crc: res.crc_hex || it.filename_crc,
                     status: "Match",
                   };
                 }
@@ -356,8 +405,16 @@ export function App() {
             setInputPaths((prev) =>
               prev.map((p) => (p === res.old_path ? res.new_path : p))
             );
+          } else {
+            errorCount++;
           }
+        } catch (err) {
+          console.error("Batch write CRC item error:", err);
+          errorCount++;
         }
+      }
+      if (errorCount > 0) {
+        alert(`Batch CRC: ${successCount} successful, ${errorCount} failed.`);
       }
     } catch (e) {
       console.error("Batch write CRC error:", e);
@@ -941,6 +998,73 @@ export function App() {
                   <option value="light">{t("settings-theme-light")}</option>
                   <option value="dark">{t("settings-theme-dark")}</option>
                 </select>
+              </div>
+
+              {/* CRC Filename Format Settings */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: 16, border: "1px solid var(--border-color)", borderRadius: 8 }}>
+                <div style={{ fontWeight: 600, fontSize: "1rem" }}>{t("settings-crc-format-title")}</div>
+
+                <div>
+                  <label style={{ display: "block", marginBottom: 6, fontWeight: 600, fontSize: "0.85rem" }}>
+                    {t("settings-crc-format-pattern")}
+                  </label>
+                  <select
+                    value={
+                      ["{name} [{crc}]", "{name} ({crc})", "{name}_[{crc}]", "{name}_({crc})"].includes(crcPattern)
+                        ? crcPattern
+                        : "custom"
+                    }
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val !== "custom") {
+                        updateCrcPattern(val);
+                      }
+                    }}
+                    style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid var(--border-color)", background: "var(--bg-secondary)", color: "var(--text-primary)" }}
+                  >
+                    <option value="{name} [{crc}]">[CRC] (e.g. filename [4E2A10FB].ext)</option>
+                    <option value="{name} ({crc})">(CRC) (e.g. filename (4E2A10FB).ext)</option>
+                    <option value="{name}_[{crc}]">_[CRC] (e.g. filename_[4E2A10FB].ext)</option>
+                    <option value="{name}_({crc})">_(CRC) (e.g. filename_(4E2A10FB).ext)</option>
+                    <option value="custom">Custom / 自定义模板</option>
+                  </select>
+                </div>
+
+                <div>
+                  <input
+                    type="text"
+                    value={crcPattern}
+                    onChange={(e) => updateCrcPattern(e.target.value)}
+                    placeholder="{name} [{crc}]"
+                    style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid var(--border-color)", background: "var(--bg-secondary)", color: "var(--text-primary)", fontFamily: "monospace" }}
+                  />
+                  <span style={{ fontSize: "0.75rem", color: "var(--text-secondary)", marginTop: 4, display: "block" }}>
+                    Use &#123;name&#125; for file name and &#123;crc&#125; for checksum.
+                  </span>
+                </div>
+
+                <div>
+                  <label style={{ display: "block", marginBottom: 6, fontWeight: 600, fontSize: "0.85rem" }}>
+                    {t("settings-crc-format-casing")}
+                  </label>
+                  <select
+                    value={crcUppercase ? "upper" : "lower"}
+                    onChange={(e) => updateCrcUppercase(e.target.value === "upper")}
+                    style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid var(--border-color)", background: "var(--bg-secondary)", color: "var(--text-primary)" }}
+                  >
+                    <option value="upper">{t("settings-crc-uppercase")}</option>
+                    <option value="lower">{t("settings-crc-lowercase")}</option>
+                  </select>
+                </div>
+
+                <div style={{ backgroundColor: "var(--bg-tertiary)", padding: "8px 12px", borderRadius: 6, fontSize: "0.85rem" }}>
+                  <span style={{ color: "var(--text-secondary)", marginRight: 8 }}>{t("settings-crc-format-preview")}:</span>
+                  <strong style={{ fontFamily: "monospace" }}>
+                    {crcPattern
+                      .replace("{name}", "Movie")
+                      .replace("{crc}", crcUppercase ? "4E2A10FB" : "4e2a10fb")}.mkv
+                  </strong>
+                </div>
               </div>
             </div>
           </div>
