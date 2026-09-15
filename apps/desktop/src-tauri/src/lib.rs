@@ -3,7 +3,9 @@
 use fluent_bundle::{FluentBundle, FluentResource};
 use rapidhash_core::algorithm::AlgorithmId;
 use rapidhash_core::digest::Digest;
-use rapidhash_core::filename_crc::{extract_crc_from_filename, insert_crc_into_filename};
+use rapidhash_core::filename_crc::{
+    extract_crc_from_filename, insert_crc_into_filename_with_options, FilenameCrcOptions,
+};
 use rapidhash_core::job::VerificationStatus;
 use rapidhash_core::path_policy::resolve_manifest_path;
 use rapidhash_core::traversal::{traverse_paths, TraversalOptions};
@@ -66,8 +68,16 @@ pub struct ManifestVerificationSummaryDto {
 pub struct RenameResultDto {
     pub old_path: String,
     pub new_path: String,
+    pub crc_hex: Option<String>,
     pub success: bool,
     pub error: Option<String>,
+}
+
+/// Options for CRC filename writing format.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WriteCrcOptionsDto {
+    pub pattern: Option<String>,
+    pub uppercase: Option<bool>,
 }
 
 #[tauri::command]
@@ -150,6 +160,12 @@ fn get_locale_strings(locale: String) -> BTreeMap<String, String> {
         "action-expand-all",
         "action-hash-mode-auto",
         "auto-calculate-label",
+        "settings-crc-format-title",
+        "settings-crc-format-pattern",
+        "settings-crc-format-casing",
+        "settings-crc-format-preview",
+        "settings-crc-uppercase",
+        "settings-crc-lowercase",
     ];
 
     let mut result = BTreeMap::new();
@@ -506,38 +522,130 @@ fn verify_manifest_file(manifest_path: String) -> Result<ManifestVerificationSum
 }
 
 #[tauri::command]
-fn write_crc_to_filename(file_path: String, crc_hex: String) -> RenameResultDto {
+fn write_crc_to_filename(
+    file_path: String,
+    crc_hex: Option<String>,
+    options: Option<WriteCrcOptionsDto>,
+) -> RenameResultDto {
     let p = PathBuf::from(&file_path);
-    let digest = match Digest::from_hex(AlgorithmId::Crc32, &crc_hex) {
-        Ok(d) => d,
-        Err(e) => {
-            return RenameResultDto {
-                old_path: file_path,
-                new_path: String::new(),
-                success: false,
-                error: Some(format!("Invalid CRC32 hex: {e}")),
-            };
+    if !p.exists() {
+        return RenameResultDto {
+            old_path: file_path,
+            new_path: String::new(),
+            crc_hex: None,
+            success: false,
+            error: Some("File does not exist".to_string()),
+        };
+    }
+
+    let digest = match crc_hex.and_then(|h| {
+        let trimmed = h.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    }) {
+        Some(h) => match Digest::from_hex(AlgorithmId::Crc32, &h) {
+            Ok(d) => d,
+            Err(e) => {
+                return RenameResultDto {
+                    old_path: file_path,
+                    new_path: String::new(),
+                    crc_hex: None,
+                    success: false,
+                    error: Some(format!("Invalid CRC32 hex: {e}")),
+                };
+            }
+        },
+        None => {
+            // Compute CRC32 on the fly if not provided
+            match File::open(&p) {
+                Ok(mut file) => {
+                    let mut hasher = AlgorithmId::Crc32.hasher();
+                    let mut buffer = vec![0u8; 64 * 1024];
+                    let mut read_err = None;
+                    loop {
+                        match file.read(&mut buffer) {
+                            Ok(0) => break,
+                            Ok(n) => hasher.update(&buffer[..n]),
+                            Err(e) => {
+                                read_err = Some(e.to_string());
+                                break;
+                            }
+                        }
+                    }
+                    if let Some(err) = read_err {
+                        return RenameResultDto {
+                            old_path: file_path,
+                            new_path: String::new(),
+                            crc_hex: None,
+                            success: false,
+                            error: Some(format!("Failed to read file for CRC32: {err}")),
+                        };
+                    }
+                    hasher.finalize()
+                }
+                Err(e) => {
+                    return RenameResultDto {
+                        old_path: file_path,
+                        new_path: String::new(),
+                        crc_hex: None,
+                        success: false,
+                        error: Some(format!("Cannot open file for CRC32: {e}")),
+                    };
+                }
+            }
         }
     };
 
-    let new_path = match insert_crc_into_filename(&p, &digest) {
+    let crc_options = FilenameCrcOptions {
+        pattern: options
+            .as_ref()
+            .and_then(|o| o.pattern.clone())
+            .unwrap_or_else(|| "{name} [{crc}]".to_string()),
+        uppercase: options.as_ref().and_then(|o| o.uppercase).unwrap_or(true),
+    };
+
+    let new_path = match insert_crc_into_filename_with_options(&p, &digest, &crc_options) {
         Ok(np) => np,
         Err(e) => {
             return RenameResultDto {
                 old_path: file_path,
                 new_path: String::new(),
+                crc_hex: None,
                 success: false,
                 error: Some(format!("Failed to generate new filename: {e}")),
             };
         }
     };
 
+    let hex_to_return = if crc_options.uppercase {
+        digest.to_hex_uppercase()
+    } else {
+        digest.to_hex_lowercase()
+    };
+
     if new_path == p {
         return RenameResultDto {
             old_path: file_path,
             new_path: new_path.display().to_string(),
+            crc_hex: Some(hex_to_return),
             success: true,
             error: None,
+        };
+    }
+
+    if new_path.exists() {
+        return RenameResultDto {
+            old_path: file_path,
+            new_path: new_path.display().to_string(),
+            crc_hex: Some(hex_to_return),
+            success: false,
+            error: Some(format!(
+                "Destination file already exists: {}",
+                new_path.display()
+            )),
         };
     }
 
@@ -545,12 +653,14 @@ fn write_crc_to_filename(file_path: String, crc_hex: String) -> RenameResultDto 
         Ok(_) => RenameResultDto {
             old_path: file_path,
             new_path: new_path.display().to_string(),
+            crc_hex: Some(hex_to_return),
             success: true,
             error: None,
         },
         Err(e) => RenameResultDto {
             old_path: file_path,
             new_path: new_path.display().to_string(),
+            crc_hex: Some(hex_to_return),
             success: false,
             error: Some(e.to_string()),
         },

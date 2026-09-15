@@ -7,6 +7,27 @@ use crate::digest::Digest;
 use crate::error::CoreError;
 use std::path::{Path, PathBuf};
 
+/// Formatting options for embedding CRC into filenames.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FilenameCrcOptions {
+    /// Pattern template containing `{name}` and `{crc}`.
+    /// E.g. `"{name} [{crc}]"` -> `"Movie [4E2A10FB].mkv"`.
+    /// E.g. `"{name} ({crc})"` -> `"Movie (4E2A10FB).mkv"`.
+    /// E.g. `"{name}_[{crc}]"` -> `"Movie_[4E2A10FB].mkv"`.
+    pub pattern: String,
+    /// Whether the CRC hex digits should be uppercase. Defaults to `true`.
+    pub uppercase: bool,
+}
+
+impl Default for FilenameCrcOptions {
+    fn default() -> Self {
+        Self {
+            pattern: "{name} [{crc}]".to_string(),
+            uppercase: true,
+        }
+    }
+}
+
 /// Extract an 8-character hexadecimal CRC-32 from a filename, if present in `[...]` or `(...)`.
 ///
 /// Matches typical release and checksum conventions:
@@ -37,18 +58,62 @@ pub fn extract_crc_from_filename(filename: &str) -> Option<Digest> {
     None
 }
 
-/// Generate a new file path with the CRC32 embedded in the filename.
-///
-/// If a CRC already exists in brackets/parentheses, it is replaced.
-/// Otherwise, ` [CRC32]` is inserted right before the file extension.
+/// Strips an existing trailing `[CRC32]` or `(CRC32)` (and preceding separator) from a stem.
+fn strip_existing_crc_from_stem(stem: &str) -> &str {
+    let chars: Vec<char> = stem.chars().collect();
+    if chars.len() < 10 {
+        return stem;
+    }
+
+    let mut i = chars.len();
+    while i > 0 {
+        i -= 1;
+        let close_delim = chars[i];
+        if close_delim == ']' || close_delim == ')' {
+            let open_delim = if close_delim == ']' { '[' } else { '(' };
+            if i >= 9 && chars[i - 9] == open_delim {
+                let candidate: String = chars[i - 8..i].iter().collect();
+                if candidate.chars().all(|c| c.is_ascii_hexdigit()) {
+                    // Check if there is a preceding separator like ' ', '_', '-', or '.'
+                    let mut start_idx = i - 9;
+                    if start_idx > 0 {
+                        let sep = chars[start_idx - 1];
+                        if sep == ' ' || sep == '_' || sep == '-' || sep == '.' {
+                            start_idx -= 1;
+                        }
+                    }
+                    let byte_offset: usize = chars[..start_idx].iter().map(|c| c.len_utf8()).sum();
+                    return &stem[..byte_offset];
+                }
+            }
+        }
+    }
+    stem
+}
+
+/// Generate a new file path with the CRC32 embedded in the filename using default options.
 pub fn insert_crc_into_filename(path: &Path, crc: &Digest) -> Result<PathBuf, CoreError> {
+    insert_crc_into_filename_with_options(path, crc, &FilenameCrcOptions::default())
+}
+
+/// Generate a new file path with the CRC32 embedded in the filename using configurable options.
+pub fn insert_crc_into_filename_with_options(
+    path: &Path,
+    crc: &Digest,
+    options: &FilenameCrcOptions,
+) -> Result<PathBuf, CoreError> {
     if crc.algorithm() != AlgorithmId::Crc32 {
         return Err(CoreError::UnsupportedAlgorithm {
             algorithm: crc.algorithm().as_str().to_string(),
         });
     }
 
-    let crc_str = crc.to_hex_uppercase();
+    let crc_str = if options.uppercase {
+        crc.to_hex_uppercase()
+    } else {
+        crc.to_hex_lowercase()
+    };
+
     let parent = path.parent().unwrap_or_else(|| Path::new(""));
     let original_name =
         path.file_name()
@@ -57,43 +122,29 @@ pub fn insert_crc_into_filename(path: &Path, crc: &Digest) -> Result<PathBuf, Co
                 path: path.display().to_string(),
             })?;
 
-    // Check if filename already has `[OLD_CRC]` or `(OLD_CRC)`
-    let chars: Vec<char> = original_name.chars().collect();
-    let mut replaced = None;
-
-    if chars.len() >= 10 {
-        let mut i = chars.len();
-        while i > 0 {
-            i -= 1;
-            let close_delim = chars[i];
-            if close_delim == ']' || close_delim == ')' {
-                let open_delim = if close_delim == ']' { '[' } else { '(' };
-                if i >= 9 && chars[i - 9] == open_delim {
-                    let candidate: String = chars[i - 8..i].iter().collect();
-                    if candidate.chars().all(|c| c.is_ascii_hexdigit()) {
-                        let mut new_name = String::new();
-                        new_name.extend(&chars[..i - 8]);
-                        new_name.push_str(&crc_str);
-                        new_name.extend(&chars[i..]);
-                        replaced = Some(new_name);
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    let new_filename = if let Some(r) = replaced {
-        r
-    } else {
-        // Insert right before extension
-        if let Some(ext_idx) = original_name.rfind('.') {
-            let (stem, ext) = original_name.split_at(ext_idx);
-            format!("{stem} [{crc_str}]{ext}")
-        } else {
-            format!("{original_name} [{crc_str}]")
-        }
+    // Split extension
+    let (raw_stem, ext) = match original_name.rfind('.') {
+        Some(idx) => (&original_name[..idx], &original_name[idx..]),
+        None => (original_name, ""),
     };
+
+    let clean_stem = strip_existing_crc_from_stem(raw_stem);
+
+    let pattern_buf;
+    let pattern = if options.pattern.contains("{name}") {
+        options.pattern.as_str()
+    } else if options.pattern.contains("{crc}") {
+        pattern_buf = format!("{{name}} {}", options.pattern);
+        pattern_buf.as_str()
+    } else {
+        "{name} [{crc}]"
+    };
+
+    let new_stem = pattern
+        .replace("{name}", clean_stem)
+        .replace("{crc}", &crc_str);
+
+    let new_filename = format!("{new_stem}{ext}");
 
     Ok(parent.join(new_filename))
 }
@@ -125,10 +176,50 @@ mod tests {
 
         let p2 = Path::new("C:/Videos/Movie_[00000000].mkv");
         let new_p2 = insert_crc_into_filename(p2, &digest).unwrap();
-        assert_eq!(new_p2, PathBuf::from("C:/Videos/Movie_[4E2A10FB].mkv"));
+        assert_eq!(new_p2, PathBuf::from("C:/Videos/Movie [4E2A10FB].mkv"));
 
         let p3 = Path::new("C:/Videos/Movie_(00000000).mkv");
         let new_p3 = insert_crc_into_filename(p3, &digest).unwrap();
-        assert_eq!(new_p3, PathBuf::from("C:/Videos/Movie_(4E2A10FB).mkv"));
+        assert_eq!(new_p3, PathBuf::from("C:/Videos/Movie [4E2A10FB].mkv"));
+    }
+
+    #[test]
+    fn test_insert_crc_with_options() {
+        let digest = Digest::from_hex(AlgorithmId::Crc32, "4e2a10fb").unwrap();
+
+        let p1 = Path::new("C:/Videos/Movie.mkv");
+        let opts_parens = FilenameCrcOptions {
+            pattern: "{name} ({crc})".to_string(),
+            uppercase: true,
+        };
+        assert_eq!(
+            insert_crc_into_filename_with_options(p1, &digest, &opts_parens).unwrap(),
+            PathBuf::from("C:/Videos/Movie (4E2A10FB).mkv")
+        );
+
+        let opts_underscore = FilenameCrcOptions {
+            pattern: "{name}_[{crc}]".to_string(),
+            uppercase: true,
+        };
+        assert_eq!(
+            insert_crc_into_filename_with_options(p1, &digest, &opts_underscore).unwrap(),
+            PathBuf::from("C:/Videos/Movie_[4E2A10FB].mkv")
+        );
+
+        let opts_lowercase = FilenameCrcOptions {
+            pattern: "{name} [{crc}]".to_string(),
+            uppercase: false,
+        };
+        assert_eq!(
+            insert_crc_into_filename_with_options(p1, &digest, &opts_lowercase).unwrap(),
+            PathBuf::from("C:/Videos/Movie [4e2a10fb].mkv")
+        );
+
+        // Replacing existing CRC in another format
+        let p2 = Path::new("C:/Videos/Movie [00000000].mkv");
+        assert_eq!(
+            insert_crc_into_filename_with_options(p2, &digest, &opts_parens).unwrap(),
+            PathBuf::from("C:/Videos/Movie (4E2A10FB).mkv")
+        );
     }
 }

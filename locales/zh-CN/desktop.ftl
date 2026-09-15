@@ -60,4 +60,13 @@ action-expand-all = 展开哈希
 action-hash-mode-auto = 自适应哈希
 auto-calculate-label = 添加后自动计算
 
+# CRC 写入文件名格式设置
+settings-crc-format-title = CRC 写入文件名格式
+settings-crc-format-pattern = 命名模板
+settings-crc-format-casing = CRC 大小写
+settings-crc-format-preview = 格式预览
+settings-crc-uppercase = 大写 (如: 4E2A10FB)
+settings-crc-lowercase = 小写 (如: 4e2a10fb)
+
+
 

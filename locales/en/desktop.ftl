@@ -60,4 +60,13 @@ action-expand-all = Expand Hashes
 action-hash-mode-auto = Adaptive Hashes
 auto-calculate-label = Auto-calculate on drop
 
+# CRC Filename Format Settings
+settings-crc-format-title = CRC Filename Format
+settings-crc-format-pattern = Pattern Template
+settings-crc-format-casing = Hex Casing
+settings-crc-format-preview = Preview
+settings-crc-uppercase = Uppercase (e.g. 4E2A10FB)
+settings-crc-lowercase = Lowercase (e.g. 4e2a10fb)
+
+
 
