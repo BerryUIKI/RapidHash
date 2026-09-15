@@ -1,14 +1,28 @@
 # Branching and Pull Request Policy
 
-## Protected Branches
+## Protected Branches: `main` and `dev`
 
-`main` is the single long-lived development branch and must remain releasable.
-After the empty repository bootstrap, all content changes reach `main` through a
-pull request. Direct pushes, force pushes, branch deletion, and history rewrites
-are prohibited.
+RapidHash utilizes a two-tier protected branch architecture:
+
+1. **`main` (Production / Stable)**:
+   - Contains only verified, production-ready, releasable code.
+   - Direct commits and direct pushes are strictly prohibited.
+   - Changes reach `main` **only** through Pull Requests from the `dev` branch after milestones or releases are stabilized and verified.
+
+2. **`dev` (Active Integration)**:
+   - The primary integration branch where day-to-day development occurs.
+   - Direct commits and direct pushes are strictly prohibited.
+   - All topic, feature, fix, and documentation branches branch off `dev` and target `dev` via Pull Requests.
+   - All commits and Pull Requests targeting `dev` must be written entirely in English.
+
+Both `main` and `dev` enforce:
+- Mandatory Pull Requests before merge.
+- Linear history (squash or rebase merge only; merge commits disabled).
+- Force pushes, branch deletions, and administrative bypass are prohibited.
+- Resolved review conversations before merge.
 
 Release tags are immutable. A temporary `release/<version>` branch may be used
-only when stabilizing a release that cannot be stabilized on `main`.
+only when stabilizing a release that cannot be stabilized on `dev`.
 
 ## Branch Names
 
@@ -101,12 +115,13 @@ Raise the requirement to one as soon as another trusted maintainer is active.
 Administrative bypass is reserved for repository recovery and documented
 security emergencies.
 
-## Merge and Backport Policy
+## Merge and Promotion Policy
 
-Use squash merge by default with a Conventional Commit title. Rebase merge may
-be used when every commit is deliberately preserved. Merge commits are disabled
-on `main` to retain linear history.
+Use squash merge by default with a Conventional Commit title in English. Rebase merge
+may be used when every commit is deliberately preserved. Merge commits are disabled
+on both `main` and `dev` to retain linear history.
 
-Fixes are made on `main` first and backported with a dedicated pull request to a
-supported release branch. Never develop new features directly on a release
-branch.
+All changes must first be merged into `dev` via a Pull Request. Once a milestone
+or release cycle on `dev` is validated, a promotion Pull Request is opened from `dev`
+to `main`. Fixes for supported releases may be backported to a dedicated release
+branch. Never develop new features directly on `main` or release branches.
