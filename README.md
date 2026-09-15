@@ -66,7 +66,7 @@ security, compatibility, and contribution contracts before implementation.
 ## Contributing
 
 Contributions are welcome once the initial implementation begins. Read
-[CONTRIBUTING.md](CONTRIBUTING.md), the [Code of Conduct](CODE_OF_CONDUCT.md),
+[CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md), the [Code of Conduct](CODE_OF_CONDUCT.md),
 and the [Security Policy](SECURITY.md) before opening an issue or pull request.
 
 ## Inspiration and Independence

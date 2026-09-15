@@ -22,14 +22,18 @@ user-interface resources are welcome and are governed by
 
 ## Development Workflow
 
-1. Fork or clone the repository.
-2. Create a branch following [docs/BRANCHING.md](docs/BRANCHING.md).
-3. Make one coherent change per pull request.
-4. Add or update tests and documentation.
-5. Run formatting, linting, tests, and relevant platform checks.
-6. Open a pull request using the repository template.
+RapidHash uses a two-tier protected branch model (`dev` for integration, `main` for releases). See [docs/BRANCHING.md](docs/BRANCHING.md) and [AGENTS.md](AGENTS.md) for full operational details.
 
-Direct pushes to `main` are prohibited after repository bootstrap.
+1. Fork or clone the repository.
+2. Checkout the active integration branch: `git checkout dev && git pull origin dev`.
+3. Create a topic branch following [docs/BRANCHING.md](docs/BRANCHING.md): `git checkout -b <type>/<description>`.
+4. Make one coherent change per pull request.
+5. Ensure all commit messages are in English using Conventional Commits.
+6. Run formatting, linting, tests, and relevant checks.
+7. Open a pull request targeting `dev`.
+8. Once changes on `dev` are complete and validated for a milestone or release, a promotion PR is made from `dev` to `main`.
+
+Direct pushes to both `main` and `dev` are strictly prohibited.
 
 ## Commit Messages
 
