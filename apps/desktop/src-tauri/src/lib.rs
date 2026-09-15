@@ -457,6 +457,7 @@ fn verify_manifest_file(manifest_path: String) -> Result<ManifestVerificationSum
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             get_supported_algorithms,
             get_locale_strings,

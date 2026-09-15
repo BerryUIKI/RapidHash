@@ -21,4 +21,5 @@ rapidhash-formats = { path = "../../../crates/rapidhash-formats" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
 unic-langid = "0.9"
