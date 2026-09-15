@@ -3,10 +3,13 @@
 use fluent_bundle::{FluentBundle, FluentResource};
 use rapidhash_core::algorithm::AlgorithmId;
 use rapidhash_core::digest::Digest;
+use rapidhash_core::filename_crc::{extract_crc_from_filename, insert_crc_into_filename};
 use rapidhash_core::job::VerificationStatus;
 use rapidhash_core::path_policy::resolve_manifest_path;
 use rapidhash_core::traversal::{traverse_paths, TraversalOptions};
-use rapidhash_formats::{parse_gnu_manifest, parse_sfv_manifest, ManifestEntry};
+use rapidhash_formats::{
+    format_gnu_manifest, format_sfv_manifest, parse_gnu_manifest, parse_sfv_manifest, ManifestEntry,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs::File;
@@ -42,6 +45,7 @@ pub struct FileResultDto {
     pub digests: BTreeMap<String, String>,
     pub status: Option<String>,
     pub error: Option<String>,
+    pub filename_crc: Option<String>,
 }
 
 /// Manifest verification summary for frontend.
@@ -55,6 +59,15 @@ pub struct ManifestVerificationSummaryDto {
     pub malformed: usize,
     pub unsupported: usize,
     pub items: Vec<FileResultDto>,
+}
+
+/// Result of a rename/insert CRC into filename operation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RenameResultDto {
+    pub old_path: String,
+    pub new_path: String,
+    pub success: bool,
+    pub error: Option<String>,
 }
 
 #[tauri::command]
@@ -131,6 +144,11 @@ fn get_locale_strings(locale: String) -> BTreeMap<String, String> {
         "verification-status-cancelled",
         "error-file-not-found",
         "error-permission-denied",
+        "action-crc-into-filename",
+        "action-save-manifest",
+        "action-fold-all",
+        "action-expand-all",
+        "auto-calculate-label",
     ];
 
     let mut result = BTreeMap::new();
@@ -179,6 +197,9 @@ fn calculate_hashes(
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| file.path.display().to_string());
 
+        let filename_crc_digest = extract_crc_from_filename(&file_name);
+        let filename_crc_str = filename_crc_digest.as_ref().map(|d| d.to_hex_uppercase());
+
         let mut hashers: Vec<(AlgorithmId, Box<dyn rapidhash_core::Hasher>)> =
             algorithms.iter().map(|a| (*a, a.hasher())).collect();
 
@@ -208,6 +229,7 @@ fn calculate_hashes(
                         digests: BTreeMap::new(),
                         status: Some("Unreadable".to_string()),
                         error: Some(err_msg),
+                        filename_crc: filename_crc_str,
                     });
                 } else {
                     let mut digests = BTreeMap::new();
@@ -215,13 +237,27 @@ fn calculate_hashes(
                         let digest = hasher.finalize();
                         digests.insert(algo.as_str().to_string(), digest.to_canonical_hex());
                     }
+
+                    // Check if filename CRC matches calculated CRC32
+                    let mut status = None;
+                    if let (Some(ref fn_crc), Some(calc_crc)) =
+                        (&filename_crc_digest, digests.get("crc32"))
+                    {
+                        if fn_crc.to_canonical_hex().eq_ignore_ascii_case(calc_crc) {
+                            status = Some(VerificationStatus::Match.stable_id().to_string());
+                        } else {
+                            status = Some(VerificationStatus::Mismatch.stable_id().to_string());
+                        }
+                    }
+
                     results.push(FileResultDto {
                         path: file.path.display().to_string(),
                         file_name,
                         size_bytes: Some(file.size_bytes),
                         digests,
-                        status: None,
+                        status,
                         error: None,
+                        filename_crc: filename_crc_str,
                     });
                 }
             }
@@ -233,6 +269,7 @@ fn calculate_hashes(
                     digests: BTreeMap::new(),
                     status: Some("Unreadable".to_string()),
                     error: Some(e.to_string()),
+                    filename_crc: filename_crc_str,
                 });
             }
         }
@@ -255,6 +292,8 @@ fn verify_file_checksum(
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| p.display().to_string());
 
+    let filename_crc_str = extract_crc_from_filename(&file_name).map(|d| d.to_hex_uppercase());
+
     let mut hasher = algo.hasher();
     let mut file = match File::open(&p) {
         Ok(f) => f,
@@ -266,6 +305,7 @@ fn verify_file_checksum(
                 digests: BTreeMap::new(),
                 status: Some(VerificationStatus::Unreadable.stable_id().to_string()),
                 error: Some(e.to_string()),
+                filename_crc: filename_crc_str,
             });
         }
     };
@@ -285,6 +325,7 @@ fn verify_file_checksum(
                     digests: BTreeMap::new(),
                     status: Some(VerificationStatus::Unreadable.stable_id().to_string()),
                     error: Some(e.to_string()),
+                    filename_crc: filename_crc_str,
                 });
             }
         }
@@ -315,6 +356,7 @@ fn verify_file_checksum(
         digests,
         status: Some(status.stable_id().to_string()),
         error: None,
+        filename_crc: filename_crc_str,
     })
 }
 
@@ -365,6 +407,7 @@ fn verify_manifest_file(manifest_path: String) -> Result<ManifestVerificationSum
                     digests: BTreeMap::new(),
                     status: Some(VerificationStatus::Missing.stable_id().to_string()),
                     error: Some("Path outside approved root or invalid".to_string()),
+                    filename_crc: None,
                 });
                 continue;
             }
@@ -375,6 +418,8 @@ fn verify_manifest_file(manifest_path: String) -> Result<ManifestVerificationSum
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| entry.path_str.clone());
 
+        let filename_crc_str = extract_crc_from_filename(&file_name).map(|d| d.to_hex_uppercase());
+
         if !resolved_path.exists() {
             summary.missing += 1;
             summary.items.push(FileResultDto {
@@ -384,6 +429,7 @@ fn verify_manifest_file(manifest_path: String) -> Result<ManifestVerificationSum
                 digests: BTreeMap::new(),
                 status: Some(VerificationStatus::Missing.stable_id().to_string()),
                 error: None,
+                filename_crc: filename_crc_str,
             });
             continue;
         }
@@ -414,6 +460,7 @@ fn verify_manifest_file(manifest_path: String) -> Result<ManifestVerificationSum
                         digests: BTreeMap::new(),
                         status: Some(VerificationStatus::Unreadable.stable_id().to_string()),
                         error: None,
+                        filename_crc: filename_crc_str,
                     });
                 } else {
                     let computed = hasher.finalize();
@@ -435,6 +482,7 @@ fn verify_manifest_file(manifest_path: String) -> Result<ManifestVerificationSum
                         digests: computed_digests,
                         status: Some(status.stable_id().to_string()),
                         error: None,
+                        filename_crc: filename_crc_str,
                     });
                 }
             }
@@ -447,12 +495,118 @@ fn verify_manifest_file(manifest_path: String) -> Result<ManifestVerificationSum
                     digests: BTreeMap::new(),
                     status: Some(VerificationStatus::Unreadable.stable_id().to_string()),
                     error: Some(e.to_string()),
+                    filename_crc: filename_crc_str,
                 });
             }
         }
     }
 
     Ok(summary)
+}
+
+#[tauri::command]
+fn write_crc_to_filename(file_path: String, crc_hex: String) -> RenameResultDto {
+    let p = PathBuf::from(&file_path);
+    let digest = match Digest::from_hex(AlgorithmId::Crc32, &crc_hex) {
+        Ok(d) => d,
+        Err(e) => {
+            return RenameResultDto {
+                old_path: file_path,
+                new_path: String::new(),
+                success: false,
+                error: Some(format!("Invalid CRC32 hex: {e}")),
+            };
+        }
+    };
+
+    let new_path = match insert_crc_into_filename(&p, &digest) {
+        Ok(np) => np,
+        Err(e) => {
+            return RenameResultDto {
+                old_path: file_path,
+                new_path: String::new(),
+                success: false,
+                error: Some(format!("Failed to generate new filename: {e}")),
+            };
+        }
+    };
+
+    if new_path == p {
+        return RenameResultDto {
+            old_path: file_path,
+            new_path: new_path.display().to_string(),
+            success: true,
+            error: None,
+        };
+    }
+
+    match std::fs::rename(&p, &new_path) {
+        Ok(_) => RenameResultDto {
+            old_path: file_path,
+            new_path: new_path.display().to_string(),
+            success: true,
+            error: None,
+        },
+        Err(e) => RenameResultDto {
+            old_path: file_path,
+            new_path: new_path.display().to_string(),
+            success: false,
+            error: Some(e.to_string()),
+        },
+    }
+}
+
+#[tauri::command]
+fn save_manifest_file(
+    output_path: String,
+    format: String,
+    items: Vec<FileResultDto>,
+) -> Result<String, String> {
+    let out_p = PathBuf::from(&output_path);
+    let root = out_p.parent().unwrap_or_else(|| Path::new("."));
+
+    let mut entries = Vec::new();
+    for (idx, item) in items.iter().enumerate() {
+        let p = PathBuf::from(&item.path);
+        let rel_path = match p.strip_prefix(root) {
+            Ok(rel) => rel.to_string_lossy().replace('\\', "/"),
+            Err(_) => item.file_name.clone(),
+        };
+
+        if format == "sfv" {
+            if let Some(crc_hex) = item.digests.get("crc32") {
+                if let Ok(d) = Digest::from_hex(AlgorithmId::Crc32, crc_hex) {
+                    entries.push(ManifestEntry::new(rel_path, d, idx + 1));
+                }
+            }
+        } else {
+            // default gnu sha256 or chosen
+            let (algo_key, algo_id) = if item.digests.contains_key("sha256") {
+                ("sha256", AlgorithmId::Sha256)
+            } else if item.digests.contains_key("blake3") {
+                ("blake3", AlgorithmId::Blake3)
+            } else if item.digests.contains_key("crc32") {
+                ("crc32", AlgorithmId::Crc32)
+            } else {
+                continue;
+            };
+
+            if let Some(hex) = item.digests.get(algo_key) {
+                if let Ok(d) = Digest::from_hex(algo_id, hex) {
+                    entries.push(ManifestEntry::new(rel_path, d, idx + 1));
+                }
+            }
+        }
+    }
+
+    let manifest_text = if format == "sfv" {
+        format_sfv_manifest(&entries, Some("Generated by RapidHash"))
+    } else {
+        format_gnu_manifest(&entries)
+    };
+
+    std::fs::write(&out_p, manifest_text).map_err(|e| e.to_string())?;
+    Ok(out_p.display().to_string())
 }
 
 pub fn run() {
@@ -464,6 +618,8 @@ pub fn run() {
             calculate_hashes,
             verify_file_checksum,
             verify_manifest_file,
+            write_crc_to_filename,
+            save_manifest_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running rapidhash desktop application");

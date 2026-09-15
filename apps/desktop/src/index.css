@@ -221,17 +221,55 @@ th {
   font-weight: 600;
   border-bottom: 1px solid var(--border-color);
   color: var(--text-secondary);
+  white-space: nowrap;
 }
 
 td {
   padding: 10px 14px;
   border-bottom: 1px solid var(--border-color);
+  white-space: nowrap;
+}
+
+.col-filename {
+  max-width: 260px;
+  min-width: 180px;
+}
+
+.cell-truncate-middle {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
 }
 
 .digest-code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.85rem;
   user-select: text;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.digest-tag {
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 0.8rem;
+  display: inline-block;
+  min-width: 55px;
+}
+
+.digest-hash-foldable {
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: background-color 0.15s;
+}
+
+.digest-hash-foldable:hover {
+  background-color: var(--bg-tertiary);
 }
 
 .status-badge {
@@ -240,6 +278,7 @@ td {
   border-radius: 4px;
   font-size: 0.8rem;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .status-match {
@@ -271,3 +310,8 @@ td {
   background-color: #78350f;
   color: #fde68a;
 }
+
+.menu-item:hover {
+  background-color: var(--bg-tertiary) !important;
+}
+

@@ -43,6 +43,11 @@ export const FALLBACK_STRINGS: Record<Locale, Translations> = {
     "verification-status-malformed": "Malformed",
     "verification-status-unsupported": "Unsupported",
     "verification-status-cancelled": "Cancelled",
+    "action-crc-into-filename": "CRC into Filename",
+    "action-save-manifest": "Export Manifest",
+    "action-fold-all": "Fold Hashes",
+    "action-expand-all": "Expand Hashes",
+    "auto-calculate-label": "Auto-calculate on drop",
   },
   "zh-CN": {
     "app-name": "RapidHash",
@@ -82,5 +87,10 @@ export const FALLBACK_STRINGS: Record<Locale, Translations> = {
     "verification-status-malformed": "格式错误",
     "verification-status-unsupported": "不支持",
     "verification-status-cancelled": "已取消",
+    "action-crc-into-filename": "CRC 写入文件名",
+    "action-save-manifest": "导出校验清单",
+    "action-fold-all": "折叠哈希",
+    "action-expand-all": "展开哈希",
+    "auto-calculate-label": "添加后自动计算",
   },
 };
