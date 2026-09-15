@@ -22,6 +22,22 @@ be documented.
 7. Smoke-test installation, upgrade, launch, calculation, verification, and
    uninstall on tier-one targets.
 
+## Automated CI & Release Workflows
+
+RapidHash uses GitHub Actions for continuous integration and multi-platform release distribution:
+
+- **Continuous Integration (`.github/workflows/ci.yml`)**:
+  - Automatically runs on pull requests and pushes targeting `dev` and `main`.
+  - Executes static analysis (`cargo clippy --workspace --all-targets -- -D warnings`), code formatting checks (`cargo fmt --all --check`), and frontend typechecking and build (`pnpm build`).
+  - Executes full workspace automated test suites across a matrix of Ubuntu, Windows, and macOS runners.
+
+- **Release Automation (`.github/workflows/release.yml`)**:
+  - Triggered automatically when pushing a version tag (e.g. `git tag v0.1.0 && git push origin v0.1.0`), or manually via `workflow_dispatch`.
+  - Concurrently compiles native desktop installers across Windows (`.msi`, `.exe`), Linux (`.deb`, `.AppImage`), and macOS (`.dmg`, `.app`) using `tauri-action`.
+  - Compiles standalone CLI binaries (`rapidhash-cli`), packages them into platform archives (`.zip` for Windows, `.tar.gz` for Linux and macOS), and attaches them to the release.
+  - Automatically generates and attaches a canonical `SHA256SUMS.txt` manifest verifying all platform binaries.
+  - Automatically marks stable releases as `--latest` or prereleases as `--prerelease`.
+
 ## Publishing
 
 - Create a signed annotated tag named `vMAJOR.MINOR.PATCH` or a SemVer prerelease.
