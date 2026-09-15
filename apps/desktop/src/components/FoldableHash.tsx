@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Copy, Check } from "lucide-react";
 import { foldHash } from "../utils/format";
 
@@ -20,12 +20,23 @@ export function FoldableHash({
   isCopied,
 }: FoldableHashProps) {
   const isLong = hash.length > 16;
-  const [isHovered, setIsHovered] = useState(false);
   const [pinnedExpanded, setPinnedExpanded] = useState<boolean | null>(null);
+  const [showPopover, setShowPopover] = useState(false);
+  const [popoverCoords, setPopoverCoords] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  const triggerRef = useRef<HTMLSpanElement>(null);
+  const enterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const leaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clean up timers on unmount
+  useEffect(() => {
+    return () => {
+      if (enterTimerRef.current) clearTimeout(enterTimerRef.current);
+      if (leaveTimerRef.current) clearTimeout(leaveTimerRef.current);
+    };
+  }, []);
 
   // Determine base folded state:
-  // If forceFolded is explicitly boolean (true/false), honor it.
-  // Otherwise, if auto/adaptive (null), expand when window is wide, fold when narrow.
   let baseFolded = false;
   if (isLong) {
     if (forceFolded === true) {
@@ -33,91 +44,192 @@ export function FoldableHash({
     } else if (forceFolded === false) {
       baseFolded = false;
     } else {
-      // Auto: adapt to window width
+      // Adaptive to window width
       baseFolded = !isWideWindow;
     }
   }
 
-  // If user explicitly clicked this row's hash, pinnedExpanded overrides baseFolded
-  const effectiveFoldedWithoutHover = pinnedExpanded !== null ? !pinnedExpanded : baseFolded;
+  // If user clicked to toggle inline expansion, pinnedExpanded overrides baseFolded
+  const isInlineFolded = isLong && (pinnedExpanded !== null ? !pinnedExpanded : baseFolded);
 
-  // Hovering temporarily expands the hash if it was folded
-  const isCurrentlyFolded = isLong && effectiveFoldedWithoutHover && !isHovered;
+  // The inline display text NEVER changes on hover!
+  // This guarantees zero GUI jumping or table column shifting.
+  const displayHash = isInlineFolded ? foldHash(hash, 8, 8) : hash;
 
-  const displayHash = (isLong && isCurrentlyFolded) ? foldHash(hash, 8, 8) : hash;
+  const handleMouseEnter = () => {
+    if (leaveTimerRef.current) {
+      clearTimeout(leaveTimerRef.current);
+      leaveTimerRef.current = null;
+    }
+
+    if (!isLong) return;
+
+    // Hover delay: trigger popover after 350ms lingering
+    enterTimerRef.current = setTimeout(() => {
+      if (triggerRef.current) {
+        const rect = triggerRef.current.getBoundingClientRect();
+        // Popover is ~490px wide on desktop; clamp x to viewport
+        const popoverWidth = 490;
+        const rawX = rect.left;
+        const clampedX = Math.max(16, Math.min(window.innerWidth - popoverWidth - 16, rawX));
+        // If too close to top of viewport, show below element, else show above
+        const showBelow = rect.top < 50;
+        const y = showBelow ? rect.bottom + 6 : rect.top - 44;
+
+        setPopoverCoords({ x: clampedX, y });
+        setShowPopover(true);
+      }
+    }, 350);
+  };
+
+  const handleMouseLeave = () => {
+    if (enterTimerRef.current) {
+      clearTimeout(enterTimerRef.current);
+      enterTimerRef.current = null;
+    }
+
+    // Grace period before closing popover so user can move mouse onto popover
+    leaveTimerRef.current = setTimeout(() => {
+      setShowPopover(false);
+    }, 180);
+  };
+
+  const handlePopoverMouseEnter = () => {
+    if (leaveTimerRef.current) {
+      clearTimeout(leaveTimerRef.current);
+      leaveTimerRef.current = null;
+    }
+  };
+
+  const handlePopoverMouseLeave = () => {
+    leaveTimerRef.current = setTimeout(() => {
+      setShowPopover(false);
+    }, 180);
+  };
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!isLong) return;
-    // Toggle pinned state: if currently folded (or hovered), toggle pinned expansion
+    // Clicking toggles inline pinned expansion
     setPinnedExpanded((prev) => {
       if (prev === null) {
-        return effectiveFoldedWithoutHover; // Pin to the opposite of current base
+        return isInlineFolded; // Pin to expanded
       }
       return !prev;
     });
   };
 
-  const getTooltip = () => {
-    if (!isLong) return hash;
-    const actionHint = pinnedExpanded !== null
-      ? (pinnedExpanded ? "Pinned expanded. Click to collapse." : "Pinned collapsed. Click to expand.")
-      : isHovered
-      ? "Hover expanded. Click to pin."
-      : "Click or hover to expand.";
-    return `${hash}\n(${actionHint})`;
-  };
-
   return (
-    <div
-      className="digest-code"
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-        margin: "2px 0",
-        position: "relative",
-      }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
-      <span className="digest-tag">{algo.toUpperCase()}:</span>
-      <span
-        className={`digest-hash-foldable ${isLong ? (isCurrentlyFolded ? "is-folded" : "is-expanded") : ""} ${isHovered ? "is-hovered" : ""}`}
-        onClick={handleClick}
-        title={getTooltip()}
+    <>
+      <div
+        className="digest-code"
         style={{
-          cursor: isLong ? "pointer" : "text",
-          fontFamily: "monospace",
-          backgroundColor: isCurrentlyFolded ? "var(--bg-tertiary)" : "transparent",
-          padding: "2px 6px",
-          borderRadius: 4,
-          transition: "background-color 0.15s, border-color 0.15s",
-          border: isHovered && isCurrentlyFolded ? "1px dashed var(--accent-color)" : "1px solid transparent",
-          userSelect: "text",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          margin: "2px 0",
+          position: "relative",
         }}
       >
-        {displayHash}
-      </span>
-      <button
-        type="button"
-        className="btn"
-        style={{
-          padding: "2px 5px",
-          minWidth: 24,
-          height: 22,
-          border: "none",
-          background: "transparent",
-          cursor: "pointer",
-        }}
-        onClick={(e) => {
-          e.stopPropagation();
-          onCopy(hash);
-        }}
-        title={`Copy ${algo.toUpperCase()} digest`}
-      >
-        {isCopied ? <Check size={12} color="var(--status-match)" /> : <Copy size={12} color="var(--text-secondary)" />}
-      </button>
-    </div>
+        <span className="digest-tag">{algo.toUpperCase()}:</span>
+        <span
+          ref={triggerRef}
+          className={`digest-hash-foldable ${isLong ? (isInlineFolded ? "is-folded" : "is-expanded") : ""}`}
+          onClick={handleClick}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+          title={isLong ? "Click to toggle inline expansion. Hover to view full digest." : hash}
+          style={{
+            cursor: isLong ? "pointer" : "text",
+            fontFamily: "monospace",
+            backgroundColor: isInlineFolded ? "var(--bg-tertiary)" : "transparent",
+            userSelect: "text",
+          }}
+        >
+          {displayHash}
+        </span>
+        <button
+          type="button"
+          className="btn"
+          style={{
+            padding: "2px 5px",
+            minWidth: 24,
+            height: 22,
+            border: "none",
+            background: "transparent",
+            cursor: "pointer",
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onCopy(hash);
+          }}
+          title={`Copy ${algo.toUpperCase()} digest`}
+        >
+          {isCopied ? <Check size={12} color="var(--status-match)" /> : <Copy size={12} color="var(--text-secondary)" />}
+        </button>
+      </div>
+
+      {/* Floating popover card shown after lingering hover */}
+      {showPopover && (
+        <div
+          className="digest-popover"
+          style={{
+            top: popoverCoords.y,
+            left: popoverCoords.x,
+          }}
+          onMouseEnter={handlePopoverMouseEnter}
+          onMouseLeave={handlePopoverMouseLeave}
+        >
+          <span
+            style={{
+              fontWeight: 700,
+              fontSize: "0.8rem",
+              color: "var(--accent-color)",
+              padding: "1px 6px",
+              borderRadius: 3,
+              backgroundColor: "var(--bg-tertiary)",
+            }}
+          >
+            {algo.toUpperCase()}
+          </span>
+          <span
+            style={{
+              userSelect: "all",
+              letterSpacing: "0.5px",
+              color: "var(--text-primary)",
+            }}
+          >
+            {hash}
+          </span>
+          <button
+            type="button"
+            className="btn"
+            style={{
+              padding: "3px 8px",
+              height: 24,
+              fontSize: "0.8rem",
+              gap: 4,
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onCopy(hash);
+            }}
+            title="Copy full digest"
+          >
+            {isCopied ? (
+              <>
+                <Check size={13} color="var(--status-match)" />
+                <span style={{ color: "var(--status-match)", fontSize: "0.75rem" }}>Copied!</span>
+              </>
+            ) : (
+              <>
+                <Copy size={13} />
+                <span style={{ fontSize: "0.75rem" }}>Copy</span>
+              </>
+            )}
+          </button>
+        </div>
+      )}
+    </>
   );
 }
