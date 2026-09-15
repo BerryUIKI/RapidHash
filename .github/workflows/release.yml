@@ -1,0 +1,169 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v0.1.0)'
+        required: false
+        default: ''
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    name: Prepare Release Metadata
+    runs-on: ubuntu-latest
+    outputs:
+      tag_name: ${{ steps.version.outputs.tag_name }}
+      is_prerelease: ${{ steps.version.outputs.is_prerelease }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Determine Version & Tag
+        id: version
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            TAG="${{ github.ref_name }}"
+          elif [ -n "${{ inputs.tag }}" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            VER=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
+            TAG="v$VER"
+          fi
+
+          if [[ "$TAG" != v* ]]; then
+            TAG="v$TAG"
+          fi
+
+          echo "tag_name=$TAG" >> $GITHUB_OUTPUT
+
+          if [[ "$TAG" =~ -(alpha|beta|rc|preview) ]]; then
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+          fi
+          echo "Target release tag: $TAG"
+
+  build-desktop-and-cli:
+    name: Build (${{ matrix.platform }})
+    needs: prepare
+    runs-on: ${{ matrix.platform }}
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            os_name: windows
+            target_arch: x86_64
+          - platform: ubuntu-22.04
+            os_name: linux
+            target_arch: x86_64
+          - platform: macos-latest
+            os_name: macos
+            target_arch: arm64
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install Rust stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache
+        uses: swatinem/rust-cache@v2
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        run: |
+          cd apps/desktop
+          pnpm install --frozen-lockfile
+
+      - name: Build Tauri Desktop Application
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: "./apps/desktop"
+          tagName: ${{ needs.prepare.outputs.tag_name }}
+          releaseName: "RapidHash ${{ needs.prepare.outputs.tag_name }}"
+          releaseBody: "RapidHash release ${{ needs.prepare.outputs.tag_name }}. See assets below for desktop installers and standalone CLI binaries."
+          releaseDraft: true
+          prerelease: ${{ needs.prepare.outputs.is_prerelease == 'true' }}
+
+      - name: Build Standalone CLI Binary
+        run: cargo build --release -p rapidhash-cli
+
+      - name: Package CLI (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path target/release/rapidhash.exe -DestinationPath "rapidhash-cli-${{ needs.prepare.outputs.tag_name }}-${{ matrix.os_name }}-${{ matrix.target_arch }}.zip"
+
+      - name: Package CLI (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          tar -czf "rapidhash-cli-${{ needs.prepare.outputs.tag_name }}-${{ matrix.os_name }}-${{ matrix.target_arch }}.tar.gz" -C target/release rapidhash
+
+      - name: Upload CLI Archive to Draft Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          gh release upload "${{ needs.prepare.outputs.tag_name }}" rapidhash-cli-${{ needs.prepare.outputs.tag_name }}-${{ matrix.os_name }}-${{ matrix.target_arch }}.* --clobber
+
+  publish:
+    name: Publish Release
+    needs: [prepare, build-desktop-and-cli]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Generate Checksums & Publish Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ needs.prepare.outputs.tag_name }}"
+          mkdir -p release-assets
+          cd release-assets
+          gh release download "$TAG" --dir .
+          rm -f SHA256SUMS.txt
+          sha256sum * > SHA256SUMS.txt
+          gh release upload "$TAG" SHA256SUMS.txt --clobber
+          cd ..
+          if [ "${{ needs.prepare.outputs.is_prerelease }}" = "true" ]; then
+            gh release edit "$TAG" --draft=false --prerelease
+          else
+            gh release edit "$TAG" --draft=false --latest
+          fi
+          echo "Successfully published release $TAG"
