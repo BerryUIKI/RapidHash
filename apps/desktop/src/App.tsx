@@ -69,10 +69,20 @@ export function App() {
   const [inputPaths, setInputPaths] = useState<string[]>([]);
   const [results, setResults] = useState<FileResultDto[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [autoCalculate, setAutoCalculate] = useState<boolean>(true);
-  const [allFolded, setAllFolded] = useState<boolean | null>(true);
+  const [allFolded, setAllFolded] = useState<boolean | null>(null);
+  const [isWideWindow, setIsWideWindow] = useState<boolean>(() => typeof window !== "undefined" ? window.innerWidth >= 1150 : false);
+
+  // Monitor window resize for adaptive hash expansion
+  useEffect(() => {
+    const handleResize = () => {
+      setIsWideWindow(window.innerWidth >= 1150);
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   // Context menu state
   const [contextMenu, setContextMenu] = useState<{
@@ -567,14 +577,30 @@ export function App() {
                 <span>.SHA256</span>
               </button>
 
-              {/* Toggle hash folding */}
+              {/* Toggle hash folding mode (Auto/Adaptive -> Expand -> Fold -> Auto) */}
               <button
                 className="btn"
-                onClick={() => setAllFolded(allFolded === true ? false : true)}
-                title={allFolded ? t("action-expand-all") : t("action-fold-all")}
+                onClick={() => {
+                  if (allFolded === null) setAllFolded(false);
+                  else if (allFolded === false) setAllFolded(true);
+                  else setAllFolded(null);
+                }}
+                title={
+                  allFolded === null
+                    ? `${t("action-hash-mode-auto")} (${isWideWindow ? "Expanded" : "Folded"}). Click to Expand All.`
+                    : allFolded === false
+                    ? `${t("action-expand-all")}. Click to Fold All.`
+                    : `${t("action-fold-all")}. Click for Adaptive.`
+                }
               >
-                {allFolded ? <Maximize2 size={16} /> : <Minimize2 size={16} />}
-                <span>{allFolded ? t("action-expand-all") : t("action-fold-all")}</span>
+                {allFolded === false ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                <span>
+                  {allFolded === null
+                    ? `${t("action-hash-mode-auto")} (${isWideWindow ? "Expanded" : "Folded"})`
+                    : allFolded === false
+                    ? t("action-expand-all")
+                    : t("action-fold-all")}
+                </span>
               </button>
 
               <button className="btn" onClick={() => { setInputPaths([]); setResults([]); }}>
@@ -622,7 +648,7 @@ export function App() {
                     <th>{t("table-column-status")}</th>
                     <th>{t("table-column-size")}</th>
                     <th>{t("table-column-algorithm")}</th>
-                    <th>{t("table-column-digest")}</th>
+                    <th className="col-digest">{t("table-column-digest")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -687,6 +713,7 @@ export function App() {
                                   algo={algo}
                                   hash={hex}
                                   forceFolded={allFolded}
+                                  isWideWindow={isWideWindow}
                                   onCopy={handleCopy}
                                   isCopied={copiedKey === hex}
                                 />
@@ -798,7 +825,7 @@ export function App() {
                       <th className="col-filename">{t("table-column-name")}</th>
                       <th>{t("table-column-status")}</th>
                       <th>{t("table-column-algorithm")}</th>
-                      <th>{t("table-column-digest")}</th>
+                      <th className="col-digest">{t("table-column-digest")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -828,6 +855,7 @@ export function App() {
                                 algo={algo}
                                 hash={hex}
                                 forceFolded={allFolded}
+                                isWideWindow={isWideWindow}
                                 onCopy={handleCopy}
                                 isCopied={copiedKey === hex}
                               />

@@ -47,6 +47,7 @@ export const FALLBACK_STRINGS: Record<Locale, Translations> = {
     "action-save-manifest": "Export Manifest",
     "action-fold-all": "Fold Hashes",
     "action-expand-all": "Expand Hashes",
+    "action-hash-mode-auto": "Adaptive Hashes",
     "auto-calculate-label": "Auto-calculate on drop",
   },
   "zh-CN": {
@@ -91,6 +92,7 @@ export const FALLBACK_STRINGS: Record<Locale, Translations> = {
     "action-save-manifest": "导出校验清单",
     "action-fold-all": "折叠哈希",
     "action-expand-all": "展开哈希",
+    "action-hash-mode-auto": "自适应哈希",
     "auto-calculate-label": "添加后自动计算",
   },
 };
