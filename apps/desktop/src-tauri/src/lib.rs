@@ -1,5 +1,7 @@
 //! Tauri 2 desktop adapter for RapidHash.
 
+pub mod shell_integration;
+
 use fluent_bundle::{FluentBundle, FluentResource};
 use rapidhash_core::algorithm::AlgorithmId;
 use rapidhash_core::digest::Digest;
@@ -18,6 +20,8 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::sync::Mutex;
+use tauri::{Emitter, Manager, State};
 use unic_langid::LanguageIdentifier;
 
 const EN_COMMON: &str = include_str!("../../../../locales/en/common.ftl");
@@ -166,6 +170,11 @@ fn get_locale_strings(locale: String) -> BTreeMap<String, String> {
         "settings-crc-format-preview",
         "settings-crc-uppercase",
         "settings-crc-lowercase",
+        "settings-shell-integration",
+        "settings-shell-integration-desc",
+        "settings-shell-integration-win11-note",
+        "settings-shell-integration-unsupported",
+        "shell-menu-entry-title",
     ];
 
     let mut result = BTreeMap::new();
@@ -720,9 +729,50 @@ fn save_manifest_file(
     Ok(out_p.display().to_string())
 }
 
+/// Pending paths passed via CLI arguments on launch.
+#[derive(Default)]
+pub struct PendingPaths(pub Mutex<Vec<String>>);
+
+#[tauri::command]
+fn take_pending_paths(state: State<PendingPaths>) -> Vec<String> {
+    let mut lock = state.0.lock().unwrap_or_else(|e| e.into_inner());
+    std::mem::take(&mut *lock)
+}
+
+#[tauri::command]
+fn get_shell_integration_status() -> shell_integration::ShellIntegrationStatusDto {
+    shell_integration::get_shell_integration_status()
+}
+
+#[tauri::command]
+fn set_shell_integration_enabled(
+    enabled: bool,
+) -> Result<shell_integration::ShellIntegrationStatusDto, String> {
+    shell_integration::set_shell_integration_enabled(enabled)
+}
+
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            let paths = shell_integration::extract_paths_from_argv(&argv);
+            if !paths.is_empty() {
+                let _ = app.emit("incoming-paths", &paths);
+            }
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            let cold_argv: Vec<String> = std::env::args_os()
+                .map(|s| s.to_string_lossy().to_string())
+                .collect();
+            let cold_paths = shell_integration::extract_paths_from_argv(&cold_argv);
+            app.manage(PendingPaths(Mutex::new(cold_paths)));
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             get_supported_algorithms,
             get_locale_strings,
@@ -731,6 +781,9 @@ pub fn run() {
             verify_manifest_file,
             write_crc_to_filename,
             save_manifest_file,
+            take_pending_paths,
+            get_shell_integration_status,
+            set_shell_integration_enabled,
         ])
         .run(tauri::generate_context!())
         .expect("error while running rapidhash desktop application");

@@ -18,3 +18,4 @@ interfaces, security, compatibility, licensing, or project structure.
 - [ADR-0002: Use Tauri 2 for the desktop application](0002-tauri-desktop.md)
 - [ADR-0003: License the project under Apache-2.0](0003-apache-2-license.md)
 - [ADR-0004: Use Fluent for shared internationalization](0004-fluent-i18n.md)
+- [ADR-0005: Windows Explorer context menu integration](0005-windows-shell-integration.md)

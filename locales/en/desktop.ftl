@@ -68,5 +68,12 @@ settings-crc-format-preview = Preview
 settings-crc-uppercase = Uppercase (e.g. 4E2A10FB)
 settings-crc-lowercase = Lowercase (e.g. 4e2a10fb)
 
+# Windows Explorer Context Menu Settings
+settings-shell-integration = Windows Explorer Context Menu
+settings-shell-integration-desc = Add RapidHash to file and folder context menus in Windows Explorer.
+settings-shell-integration-win11-note = Note: On Windows 11, classic context menu entries appear under "Show more options" (Shift+F10).
+settings-shell-integration-unsupported = Windows Explorer integration is only available on Windows.
+shell-menu-entry-title = RapidHash
+
 
 

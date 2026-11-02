@@ -68,5 +68,12 @@ settings-crc-format-preview = 格式预览
 settings-crc-uppercase = 大写 (如: 4E2A10FB)
 settings-crc-lowercase = 小写 (如: 4e2a10fb)
 
+# Windows 资源管理器右键菜单设置
+settings-shell-integration = Windows 资源管理器右键菜单
+settings-shell-integration-desc = 在 Windows 资源管理器文件与文件夹的右键菜单中添加 RapidHash 选项。
+settings-shell-integration-win11-note = 提示：在 Windows 11 上，传统右键菜单项显示在“显示更多选项”(Shift+F10) 中。
+settings-shell-integration-unsupported = 资源管理器集成仅在 Windows 系统可用。
+shell-menu-entry-title = RapidHash
+
 
 
