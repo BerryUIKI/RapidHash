@@ -157,9 +157,21 @@ export function App() {
         setAlgorithms(algos);
       } catch {
         setAlgorithms([
-          { id: "crc32", name: "CRC32", category: "NonCryptographic", is_recommended: false, digest_length_bytes: 4 },
-          { id: "sha256", name: "SHA-256", category: "ModernCryptographic", is_recommended: true, digest_length_bytes: 32 },
+          { id: "sha256", name: "SHA256", category: "ModernCryptographic", is_recommended: true, digest_length_bytes: 32 },
           { id: "blake3", name: "BLAKE3", category: "ModernCryptographic", is_recommended: true, digest_length_bytes: 32 },
+          { id: "sha512", name: "SHA512", category: "ModernCryptographic", is_recommended: false, digest_length_bytes: 64 },
+          { id: "sha384", name: "SHA384", category: "ModernCryptographic", is_recommended: false, digest_length_bytes: 48 },
+          { id: "sha3-512", name: "SHA3-512", category: "ModernCryptographic", is_recommended: false, digest_length_bytes: 64 },
+          { id: "sha3-256", name: "SHA3-256", category: "ModernCryptographic", is_recommended: false, digest_length_bytes: 32 },
+          { id: "blake2b-512", name: "BLAKE2B-512", category: "ModernCryptographic", is_recommended: false, digest_length_bytes: 64 },
+          { id: "blake2s-256", name: "BLAKE2S-256", category: "ModernCryptographic", is_recommended: false, digest_length_bytes: 32 },
+          { id: "crc32", name: "CRC32", category: "NonCryptographic", is_recommended: false, digest_length_bytes: 4 },
+          { id: "crc32c", name: "CRC32C", category: "NonCryptographic", is_recommended: false, digest_length_bytes: 4 },
+          { id: "xxh3", name: "XXH3", category: "NonCryptographic", is_recommended: false, digest_length_bytes: 8 },
+          { id: "xxh64", name: "XXH64", category: "NonCryptographic", is_recommended: false, digest_length_bytes: 8 },
+          { id: "xxh32", name: "XXH32", category: "NonCryptographic", is_recommended: false, digest_length_bytes: 4 },
+          { id: "md5", name: "MD5", category: "LegacyCryptographic", is_recommended: false, digest_length_bytes: 16 },
+          { id: "sha1", name: "SHA1", category: "LegacyCryptographic", is_recommended: false, digest_length_bytes: 20 },
         ]);
       }
     }

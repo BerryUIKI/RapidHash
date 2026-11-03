@@ -9,8 +9,8 @@ pub mod path_policy;
 pub mod traversal;
 
 pub use algorithm::{
-    AlgorithmCategory, AlgorithmDescriptor, AlgorithmId, Blake3Hasher, Crc32Hasher, Hasher,
-    MultiHasher, Sha256Hasher,
+    AlgorithmCategory, AlgorithmDescriptor, AlgorithmId, Blake3Hasher, Crc32Hasher, Crc32cHasher,
+    CryptoHasher, Hasher, MultiHasher, Sha256Hasher, Xxh32Hasher, Xxh3Hasher, Xxh64Hasher,
 };
 pub use digest::Digest;
 pub use error::CoreError;

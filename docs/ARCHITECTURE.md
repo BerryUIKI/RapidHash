@@ -33,17 +33,20 @@ The UI cannot access arbitrary files directly. File access occurs through narrow
 Rust commands with Tauri capabilities scoped to the required windows and
 operations.
 
-## 3. Planned Workspace
+## 3. Workspace
 
 ```text
 crates/rapidhash-core       domain types, hashing, traversal, scheduling
 crates/rapidhash-formats    manifest parsing, validation, and serialization
+crates/rapidhash-i18n       Fluent catalogs, locale negotiation, parity checks
 crates/rapidhash-cli        command-line adapter
-apps/desktop/src-tauri      Tauri application adapter
+apps/desktop/src-tauri      Tauri application adapter and Windows shell integration
 apps/desktop/src            React/TypeScript presentation layer
-integrations/               optional operating-system adapters
-tests/fixtures              shared compatibility fixtures
 ```
+
+Optional per-OS adapters live in the adapter that consumes them; a dedicated
+`integrations/` tree is reserved for adapters that outgrow that placement.
+Shared compatibility fixtures live beside the tests that use them.
 
 Dependencies point inward: platform and presentation layers may depend on core
 interfaces, but core crates never depend on Tauri, React, or operating-system

@@ -44,6 +44,37 @@ fn parse_gnu_binary_mode_marker() {
 }
 
 #[test]
+fn parse_gnu_deduces_unambiguous_algorithm_lengths() {
+    let md5 = "900150983cd24fb0d6963f7d28e17f72  md5.txt";
+    let sha1 = "a9993e364706816aba3e25717850c26c9cd0d89d  sha1.txt";
+    let sha384 = "38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b  sha384.txt";
+
+    assert_eq!(
+        parse_gnu_manifest(md5, None).unwrap()[0].digest.algorithm(),
+        AlgorithmId::Md5
+    );
+    assert_eq!(
+        parse_gnu_manifest(sha1, None).unwrap()[0]
+            .digest
+            .algorithm(),
+        AlgorithmId::Sha1
+    );
+    assert_eq!(
+        parse_gnu_manifest(sha384, None).unwrap()[0]
+            .digest
+            .algorithm(),
+        AlgorithmId::Sha384
+    );
+
+    // 16 hex characters (8 bytes) is ambiguous between XXH64 and XXH3.
+    assert!(parse_gnu_manifest("0000000000000000  xxh.txt", None).is_err());
+    // 128 hex characters (64 bytes) is ambiguous between SHA-512, SHA3-512,
+    // and BLAKE2b-512.
+    let sha512 = "cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e  sha512.txt";
+    assert!(parse_gnu_manifest(sha512, None).is_err());
+}
+
+#[test]
 fn parse_gnu_handles_spaces_in_path() {
     let manifest_text = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad  path with multiple spaces.iso\n";
     let entries = parse_gnu_manifest(manifest_text, None).expect("should parse path with spaces");

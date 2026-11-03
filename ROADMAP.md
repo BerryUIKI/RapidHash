@@ -17,6 +17,7 @@ feedback.
 - Establish shared Fluent catalogs, locale negotiation, and catalog validation.
 - Implement bounded streaming file reads and cancellation.
 - Add CRC32, CRC32C, MD5, SHA-1, SHA-256, SHA-384, SHA-512, and BLAKE3.
+  (Delivered.)
 - Add deterministic CLI output and machine-readable JSON output.
 - Validate algorithms with published vectors and independent implementations.
 
@@ -39,14 +40,14 @@ feedback.
 
 ## Phase 4: Advanced Algorithms and Scale
 
-- Add SHA-3, BLAKE2, xxHash32, xxHash64, and XXH3.
+- Add SHA-3, BLAKE2, xxHash32, xxHash64, and XXH3. (Delivered.)
 - Tune concurrency for SSDs, hard drives, and network file systems.
 - Add large-directory filtering, sorting, and export.
 - Publish repeatable performance baselines.
 
 ## Phase 5: Platform Integration and Distribution
 
-- Add optional Windows Explorer actions.
+- Add optional Windows Explorer actions. (Delivered.)
 - Add a macOS Finder service or Quick Action.
 - Add supported Linux file-manager actions where maintainable.
 - Ship signed or verifiable platform-native packages.

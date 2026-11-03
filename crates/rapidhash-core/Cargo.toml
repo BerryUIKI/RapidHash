@@ -8,10 +8,16 @@ rust-version.workspace = true
 description = "Core domain types, hashing engine, and execution models for RapidHash"
 
 [dependencies]
+blake2 = "0.10"
 blake3 = "1.5"
+crc32c = "0.6"
 crc32fast = "1.4"
+md-5 = "0.10"
+sha1 = "0.10"
 sha2 = "0.10"
+sha3 = "0.10"
 thiserror = "2.0"
+xxhash-rust = { version = "0.8", features = ["xxh32", "xxh64", "xxh3"] }
 
 [dev-dependencies]
 hex-literal = "1.1"
