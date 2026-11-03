@@ -1,9 +1,8 @@
 # Building and Development
 
-This document defines the intended development workflow. Commands will be made
-executable when the implementation scaffold is introduced.
+This document describes the development workflow for the implemented workspace.
 
-## Planned Prerequisites
+## Prerequisites
 
 - a stable Rust toolchain managed by `rustup`;
 - Node.js active LTS and Corepack;
@@ -11,8 +10,8 @@ executable when the implementation scaffold is introduced.
 - Git; and
 - platform packaging or signing tools only when producing release artifacts.
 
-The repository will pin or declare minimum versions once the first scaffold is
-merged. Do not assume globally installed prerelease toolchains.
+The workspace declares Rust 1.85 as its minimum supported toolchain. Do not
+assume globally installed prerelease toolchains.
 
 ## Layout and Validation Commands
 
@@ -33,6 +32,13 @@ cargo fmt --all --check
 
 # Format code across the workspace:
 cargo fmt --all
+```
+
+Frontend checks run from `apps/desktop` with pnpm:
+
+```shell
+pnpm install --frozen-lockfile
+pnpm build
 ```
 
 ## Platform Notes

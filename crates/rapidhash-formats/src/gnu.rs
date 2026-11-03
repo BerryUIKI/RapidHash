@@ -86,12 +86,19 @@ pub fn format_gnu_manifest(entries: &[ManifestEntry]) -> String {
 
 fn deduce_algorithm_from_length(hex_len: usize, line: usize) -> Result<AlgorithmId, FormatError> {
     match hex_len {
-        64 => {
-            // Both SHA-256 and BLAKE3 produce 32 bytes (64 hex characters).
-            // Default to SHA-256 for standard 64-char GNU manifests.
-            Ok(AlgorithmId::Sha256)
-        }
+        // Four bytes are shared by CRC32, CRC32C, and XXH32. GNU and SFV
+        // manifests conventionally carry CRC32 at this length.
         8 => Ok(AlgorithmId::Crc32),
+        // 16 bytes uniquely identify MD5 among supported algorithms.
+        32 => Ok(AlgorithmId::Md5),
+        // 20 bytes uniquely identify SHA-1.
+        40 => Ok(AlgorithmId::Sha1),
+        // 32 bytes are shared by SHA-256, BLAKE3, SHA3-256, and BLAKE2s-256.
+        // GNU manifests conventionally carry SHA-256 at this length.
+        64 => Ok(AlgorithmId::Sha256),
+        // 48 bytes uniquely identify SHA-384.
+        96 => Ok(AlgorithmId::Sha384),
+        // Other lengths are ambiguous or unknown; require manifest context.
         other => Err(FormatError::AmbiguousAlgorithm {
             line,
             length: other,

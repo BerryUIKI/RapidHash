@@ -10,10 +10,10 @@ ambiguous historical variant.
 
 | Format | Read | Write | Typical extensions |
 | --- | --- | --- | --- |
-| SFV | Planned | Planned | `.sfv` |
-| GNU-style hexadecimal sum | Planned | Planned | `.md5`, `.sha1`, `.sha256`, `.sha512`, algorithm-specific |
-| BSD tagged checksum | Planned | Deferred | algorithm-specific text files |
-| JSON result schema | Planned | Planned | `.json` |
+| SFV | Supported | Supported | `.sfv` |
+| GNU-style hexadecimal sum | Supported | Supported | `.md5`, `.sha1`, `.sha256`, `.sha512`, algorithm-specific |
+| BSD tagged checksum | Deferred | Deferred | algorithm-specific text files |
+| JSON result schema | Not applicable | Supported (CLI `--json`) | `.json` |
 
 New formats require fixtures, collision/ambiguity analysis, encoding behavior,
 and an ADR when they change the public compatibility contract.
@@ -30,12 +30,23 @@ Binary/text marker variants may be read for compatibility. Generation uses
 forward slashes by default for portable relative paths. Ambiguous escaping must
 be explicitly documented and tested before support is enabled.
 
+Records may carry any digest listed in [Algorithm Policy](ALGORITHMS.md). When
+the caller supplies no algorithm context, the parser deduces it from digest
+length only where that length is unambiguous (MD5, SHA-1, and SHA-384). Lengths
+shared by several algorithms follow the GNU conventions: eight hexadecimal
+characters mean CRC32 and 64 mean SHA-256. Remaining ambiguous lengths (for
+example 16 characters for XXH64/XXH3 or 128 for SHA-512/SHA3-512/BLAKE2b-512)
+are rejected rather than guessed. CRC and xxHash digests are written big-endian
+so the text matches the canonical numeric value.
+
 ## 4. SFV Records
 
 Blank lines and lines beginning with a semicolon are comments. A data line ends
 with an eight-digit CRC32 value separated from the file name by whitespace.
 Parsing proceeds from the digest at the end so spaces in file names remain
-representable. Generated CRC values use uppercase hexadecimal.
+representable. Generated CRC values use uppercase hexadecimal. SFV carries
+CRC32 only; CRC32C and xxHash values are not representable in SFV and belong in
+GNU-style manifests.
 
 ## 5. Encoding
 

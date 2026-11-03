@@ -28,6 +28,16 @@ explicitly requested. Color follows `auto`, `always`, or `never` policy.
 `--json` emits one versioned JSON document or newline-delimited records when an
 explicit streaming option is selected. JSON contains no localized values.
 
+## Algorithms
+
+`hash` accepts one or more `--algorithm` values; the default is `sha256`.
+Canonical identifiers are the lowercase tokens listed in
+[Algorithm Policy](ALGORITHMS.md): `sha256`, `sha512`, `sha384`, `sha3-512`,
+`sha3-256`, `blake2b-512`, `blake2s-256`, `blake3`, `md5`, `sha1`, `crc32`,
+`crc32c`, `xxh3`, `xxh64`, and `xxh32`. Common aliases such as `sha-256` and
+`xxhash64` are accepted on input. The `algorithms` subcommand lists the
+supported set with canonical identifiers and categories.
+
 ## Determinism
 
 Given stable files and equivalent options, result order, digest casing, path

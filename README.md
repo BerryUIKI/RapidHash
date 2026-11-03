@@ -5,8 +5,8 @@ macOS, and Linux. It combines a reusable Rust hashing engine, a command-line
 interface, and a Tauri desktop application.
 
 > [!IMPORTANT]
-> RapidHash is in the documentation and architecture phase. No production
-> implementation has been released yet.
+> RapidHash is pre-alpha. The Rust core, CLI, and desktop application are under
+> active development on `dev`; no production release has been published yet.
 
 ## Goals
 
@@ -20,27 +20,37 @@ interface, and a Tauri desktop application.
 - Remain private by default: files and checksums stay on the local machine unless
   the user explicitly chooses an external integration.
 
-## Planned Algorithms
+## Supported Algorithms
 
-The first stable release is expected to support CRC32, CRC32C, MD5, SHA-1,
-SHA-256, SHA-384, SHA-512, SHA-3, BLAKE2, BLAKE3, xxHash32, xxHash64, and
-XXH3. Legacy algorithms will be clearly marked as unsuitable for security uses.
-See [Algorithm Policy](docs/ALGORITHMS.md).
+RapidHash calculates the following checksums:
 
-## Planned Interfaces
+- **Modern cryptographic:** SHA-256, SHA-384, SHA-512, SHA3-256, SHA3-512,
+  BLAKE2b-512, BLAKE2s-256, and BLAKE3.
+- **Legacy cryptographic:** MD5 and SHA-1, clearly marked as unsuitable for
+  security uses.
+- **Non-cryptographic:** CRC32, CRC32C, XXH3, XXH64, and XXH32 for fast
+  integrity checks.
+
+See [Algorithm Policy](docs/ALGORITHMS.md) for identifiers, digest lengths, and
+hex formatting rules.
+
+## Interfaces
 
 - **Desktop:** Tauri 2 with a React and TypeScript user interface.
 - **CLI:** a native Rust executable suitable for shells and automation.
 - **Platform integrations:** optional file-manager actions implemented separately
-  for each operating system.
+  for each operating system; Windows Explorer context menu integration is
+  available today.
 
 The project architecture is described in [Architecture](docs/ARCHITECTURE.md),
 and the delivery sequence is maintained in the [Roadmap](ROADMAP.md).
 
 ## Project Status
 
-RapidHash is currently **pre-alpha**. The project is defining its product,
-security, compatibility, and contribution contracts before implementation.
+RapidHash is currently **pre-alpha**. The hashing engine, CLI, manifest
+workflows, and desktop application are implemented and under active review on
+`dev`; the stable release process and remaining platform integrations are still
+in progress.
 
 ## Documentation
 
@@ -65,7 +75,7 @@ security, compatibility, and contribution contracts before implementation.
 
 ## Contributing
 
-Contributions are welcome once the initial implementation begins. Read
+Contributions are welcome. Read
 [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md), the [Code of Conduct](CODE_OF_CONDUCT.md),
 and the [Security Policy](SECURITY.md) before opening an issue or pull request.
 
