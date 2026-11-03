@@ -21,6 +21,9 @@ after its public API and release process stabilize.
   BOM, and UTF-16 LE input tolerance.
 - Tauri 2 desktop application with React and TypeScript, drag-and-drop and file
   picker input, CRC-into-filename, manifest export, and checksum verification.
+- Desktop result-table filtering by name, path, and status, sortable columns,
+  bounded rendering for large result sets, and CSV/JSON export of the filtered
+  results.
 - Optional Windows Explorer context menu integration using per-user registry
   verbs, single-instance path routing, and an in-app settings toggle.
 - Mozilla Fluent catalogs for English and Simplified Chinese with structural
