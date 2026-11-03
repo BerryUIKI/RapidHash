@@ -42,7 +42,7 @@ feedback.
 
 - Add SHA-3, BLAKE2, xxHash32, xxHash64, and XXH3. (Delivered.)
 - Tune concurrency for SSDs, hard drives, and network file systems.
-- Add large-directory filtering, sorting, and export.
+- Add large-directory filtering, sorting, and export. (Delivered.)
 - Publish repeatable performance baselines.
 
 ## Phase 5: Platform Integration and Distribution

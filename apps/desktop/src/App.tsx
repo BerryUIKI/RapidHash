@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useMemo, useDeferredValue, useRef } from "react";
 import { 
   Calculator, 
   CheckCircle2, 
@@ -12,6 +12,7 @@ import {
   FileSearch,
   Edit3,
   Save,
+  Download,
   Minimize2,
   Maximize2,
   Info
@@ -69,6 +70,24 @@ interface ManifestSummaryDto {
   items: FileResultDto[];
 }
 
+type FilterStatus = "all" | "ok" | "mismatch" | "error";
+type SortKey = "name" | "size" | "status" | "algorithm";
+
+function resultCategory(row: FileResultDto): Exclude<FilterStatus, "all"> {
+  if (row.error) return "error";
+  const status = (row.status || "").toLowerCase();
+  if (
+    status === "mismatch" ||
+    status === "missing" ||
+    status === "unreadable" ||
+    status === "malformed" ||
+    status === "unsupported"
+  ) {
+    return "mismatch";
+  }
+  return "ok";
+}
+
 export function App() {
   const [activeTab, setActiveTab] = useState<"calculate" | "verify" | "generate" | "settings">("calculate");
   const [locale, setLocale] = useState<Locale>("en");
@@ -84,6 +103,13 @@ export function App() {
   const [autoCalculate, setAutoCalculate] = useState<boolean>(true);
   const [allFolded, setAllFolded] = useState<boolean | null>(null);
   const [isWideWindow, setIsWideWindow] = useState<boolean>(() => typeof window !== "undefined" ? window.innerWidth >= 1150 : false);
+
+  // Result table filtering, sorting, and bounded rendering
+  const [filterText, setFilterText] = useState("");
+  const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+  const [visibleCount, setVisibleCount] = useState(200);
 
   // Monitor window resize for adaptive hash expansion
   useEffect(() => {
@@ -317,6 +343,83 @@ export function App() {
 
   const t = (key: string): string => strings[key] || key;
 
+  // Compose a localized message with { $name } placeholder substitution.
+  const formatMessage = (key: string, values: Record<string, string>): string => {
+    let message = t(key);
+    for (const [name, value] of Object.entries(values)) {
+      message = message.split(`{ $${name} }`).join(value);
+    }
+    return message;
+  };
+
+  const deferredFilter = useDeferredValue(filterText);
+
+  const filteredResults = useMemo(() => {
+    const query = deferredFilter.trim().toLowerCase();
+    return results.filter((row) => {
+      if (filterStatus !== "all" && resultCategory(row) !== filterStatus) {
+        return false;
+      }
+      if (!query) {
+        return true;
+      }
+      return (
+        row.file_name.toLowerCase().includes(query) ||
+        row.path.toLowerCase().includes(query)
+      );
+    });
+  }, [results, deferredFilter, filterStatus]);
+
+  const displayResults = useMemo(() => {
+    if (!sortKey) {
+      return filteredResults;
+    }
+    const direction = sortDirection === "asc" ? 1 : -1;
+    return [...filteredResults].sort((a, b) => {
+      let comparison = 0;
+      switch (sortKey) {
+        case "name":
+          comparison = a.file_name.localeCompare(b.file_name);
+          break;
+        case "size":
+          comparison = (a.size_bytes ?? -1) - (b.size_bytes ?? -1);
+          break;
+        case "status":
+          comparison = resultCategory(a).localeCompare(resultCategory(b));
+          break;
+        case "algorithm":
+          comparison = Object.keys(a.digests)
+            .sort()
+            .join(",")
+            .localeCompare(Object.keys(b.digests).sort().join(","));
+          break;
+      }
+      return comparison * direction;
+    });
+  }, [filteredResults, sortKey, sortDirection]);
+
+  useEffect(() => {
+    setVisibleCount(200);
+  }, [deferredFilter, filterStatus, sortKey, sortDirection]);
+
+  const visibleResults = displayResults.slice(0, visibleCount);
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDirection((previous) => (previous === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDirection("asc");
+    }
+  };
+
+  const sortIndicator = (key: SortKey): string => {
+    if (sortKey !== key) {
+      return "";
+    }
+    return sortDirection === "asc" ? " ▲" : " ▼";
+  };
+
   const handlePickFiles = async () => {
     try {
       const selected = await open({
@@ -501,7 +604,7 @@ export function App() {
 
   // Save Manifest (.sfv or .sha256)
   const handleSaveManifest = async (format: "sfv" | "sha256") => {
-    if (results.length === 0) return;
+    if (filteredResults.length === 0) return;
     try {
       const ext = format === "sfv" ? "sfv" : "sha256";
       const savePath = await save({
@@ -512,13 +615,34 @@ export function App() {
         await invoke("save_manifest_file", {
           outputPath: savePath,
           format,
-          items: results,
+          items: filteredResults,
         });
-        alert(`Manifest saved successfully to:\n${savePath}`);
+        alert(formatMessage("export-success", { path: savePath }));
       }
     } catch (e) {
       console.error("Save manifest error:", e);
-      alert(`Failed to save manifest: ${e}`);
+      alert(formatMessage("export-failure", { error: String(e) }));
+    }
+  };
+
+  const handleExportResults = async (format: "csv" | "json") => {
+    if (filteredResults.length === 0) return;
+    try {
+      const savePath = await save({
+        defaultPath: `checksums.${format}`,
+        filters: [{ name: format.toUpperCase(), extensions: [format] }],
+      });
+      if (savePath && typeof savePath === "string") {
+        await invoke("save_results_file", {
+          outputPath: savePath,
+          format,
+          items: filteredResults,
+        });
+        alert(formatMessage("export-success", { path: savePath }));
+      }
+    } catch (e) {
+      console.error("Export results error:", e);
+      alert(formatMessage("export-failure", { error: String(e) }));
     }
   };
 
@@ -693,7 +817,7 @@ export function App() {
               <button
                 className="btn"
                 onClick={() => handleSaveManifest("sfv")}
-                disabled={isProcessing || results.length === 0}
+                disabled={isProcessing || filteredResults.length === 0}
                 title="Export SFV checksum manifest"
               >
                 <Save size={16} />
@@ -703,11 +827,31 @@ export function App() {
               <button
                 className="btn"
                 onClick={() => handleSaveManifest("sha256")}
-                disabled={isProcessing || results.length === 0}
+                disabled={isProcessing || filteredResults.length === 0}
                 title="Export SHA-256 checksum manifest"
               >
                 <Save size={16} />
                 <span>.SHA256</span>
+              </button>
+
+              <button
+                className="btn"
+                onClick={() => handleExportResults("csv")}
+                disabled={isProcessing || filteredResults.length === 0}
+                title="Export results as CSV"
+              >
+                <Download size={16} />
+                <span>.CSV</span>
+              </button>
+
+              <button
+                className="btn"
+                onClick={() => handleExportResults("json")}
+                disabled={isProcessing || filteredResults.length === 0}
+                title="Export results as JSON"
+              >
+                <Download size={16} />
+                <span>.JSON</span>
               </button>
 
               {/* Toggle hash folding mode (Auto/Adaptive -> Expand -> Fold -> Auto) */}
@@ -773,14 +917,67 @@ export function App() {
               </div>
             </div>
 
+            <div className="filter-bar">
+              <input
+                className="filter-input"
+                type="search"
+                value={filterText}
+                onChange={(e) => setFilterText(e.target.value)}
+                placeholder={t("calculate-filter-placeholder")}
+                aria-label={t("calculate-filter-placeholder")}
+              />
+              <select
+                className="filter-select"
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value as FilterStatus)}
+                aria-label={t("calculate-filter-status")}
+              >
+                <option value="all">{t("calculate-filter-status-all")}</option>
+                <option value="ok">{t("calculate-filter-status-ok")}</option>
+                <option value="mismatch">{t("calculate-filter-status-mismatch")}</option>
+                <option value="error">{t("calculate-filter-status-error")}</option>
+              </select>
+              <span className="filter-count">
+                {formatMessage("calculate-showing-count", {
+                  visible: String(Math.min(visibleCount, displayResults.length)),
+                  total: String(displayResults.length),
+                })}
+              </span>
+            </div>
+
             <div className="table-wrapper">
               <table>
                 <thead>
                   <tr>
-                    <th className="col-filename">{t("table-column-name")}</th>
-                    <th>{t("table-column-status")}</th>
-                    <th>{t("table-column-size")}</th>
-                    <th>{t("table-column-algorithm")}</th>
+                    <th
+                      className="col-filename"
+                      aria-sort={sortKey === "name" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}
+                    >
+                      <button type="button" className="sort-header" onClick={() => handleSort("name")}>
+                        {t("table-column-name")}{sortIndicator("name")}
+                      </button>
+                    </th>
+                    <th
+                      aria-sort={sortKey === "status" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}
+                    >
+                      <button type="button" className="sort-header" onClick={() => handleSort("status")}>
+                        {t("table-column-status")}{sortIndicator("status")}
+                      </button>
+                    </th>
+                    <th
+                      aria-sort={sortKey === "size" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}
+                    >
+                      <button type="button" className="sort-header" onClick={() => handleSort("size")}>
+                        {t("table-column-size")}{sortIndicator("size")}
+                      </button>
+                    </th>
+                    <th
+                      aria-sort={sortKey === "algorithm" ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}
+                    >
+                      <button type="button" className="sort-header" onClick={() => handleSort("algorithm")}>
+                        {t("table-column-algorithm")}{sortIndicator("algorithm")}
+                      </button>
+                    </th>
                     <th className="col-digest">{t("table-column-digest")}</th>
                   </tr>
                 </thead>
@@ -809,53 +1006,75 @@ export function App() {
                       </td>
                     </tr>
                   ) : (
-                    results.map((row, idx) => (
-                      <tr 
-                        key={idx}
-                        onContextMenu={(e) => handleRowContextMenu(e, row)}
-                        style={{ cursor: "context-menu" }}
-                      >
-                        <td className="col-filename" title={row.path}>
-                          <span className="cell-truncate-middle">{truncateMiddle(row.file_name, 36)}</span>
-                        </td>
-                        <td>
-                          {row.status === "Match" || row.status === "verification-status-match" ? (
-                            <span className="status-badge status-match">
-                              {row.filename_crc ? "Match (CRC)" : t("verification-status-match")}
-                            </span>
-                          ) : row.status === "Mismatch" || row.status === "verification-status-mismatch" ? (
-                            <span className="status-badge status-mismatch">
-                              {row.filename_crc ? "Mismatch (CRC)" : t("verification-status-mismatch")}
-                            </span>
-                          ) : row.error ? (
-                            <span className="status-badge status-mismatch">Error</span>
-                          ) : (
-                            <span className="status-badge status-match" style={{ opacity: 0.75 }}>OK</span>
-                          )}
-                        </td>
-                        <td>{formatBytes(row.size_bytes)}</td>
-                        <td>{Object.keys(row.digests).join(", ").toUpperCase()}</td>
-                        <td>
-                          {row.error ? (
-                            <span style={{ color: "var(--status-mismatch)" }}>{row.error}</span>
-                          ) : (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                              {Object.entries(row.digests).map(([algo, hex]) => (
-                                <FoldableHash
-                                  key={algo}
-                                  algo={algo}
-                                  hash={hex}
-                                  forceFolded={allFolded}
-                                  isWideWindow={isWideWindow}
-                                  onCopy={handleCopy}
-                                  isCopied={copiedKey === hex}
-                                />
-                              ))}
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    ))
+                    <>
+                      {visibleResults.map((row) => (
+                        <tr
+                          key={row.path}
+                          onContextMenu={(e) => handleRowContextMenu(e, row)}
+                          style={{ cursor: "context-menu" }}
+                        >
+                          <td className="col-filename" title={row.path}>
+                            <span className="cell-truncate-middle">{truncateMiddle(row.file_name, 36)}</span>
+                          </td>
+                          <td>
+                            {row.status === "Match" || row.status === "verification-status-match" ? (
+                              <span className="status-badge status-match">
+                                {row.filename_crc ? "Match (CRC)" : t("verification-status-match")}
+                              </span>
+                            ) : row.status === "Mismatch" || row.status === "verification-status-mismatch" ? (
+                              <span className="status-badge status-mismatch">
+                                {row.filename_crc ? "Mismatch (CRC)" : t("verification-status-mismatch")}
+                              </span>
+                            ) : row.error ? (
+                              <span className="status-badge status-mismatch">Error</span>
+                            ) : (
+                              <span className="status-badge status-match" style={{ opacity: 0.75 }}>OK</span>
+                            )}
+                          </td>
+                          <td>{formatBytes(row.size_bytes)}</td>
+                          <td>{Object.keys(row.digests).join(", ").toUpperCase()}</td>
+                          <td>
+                            {row.error ? (
+                              <span style={{ color: "var(--status-mismatch)" }}>{row.error}</span>
+                            ) : (
+                              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                                {Object.entries(row.digests).map(([algo, hex]) => (
+                                  <FoldableHash
+                                    key={algo}
+                                    algo={algo}
+                                    hash={hex}
+                                    forceFolded={allFolded}
+                                    isWideWindow={isWideWindow}
+                                    onCopy={handleCopy}
+                                    isCopied={copiedKey === hex}
+                                  />
+                                ))}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                      {displayResults.length === 0 && (
+                        <tr>
+                          <td colSpan={5} style={{ textAlign: "center", padding: 30, color: "var(--text-secondary)" }}>
+                            {t("calculate-filter-empty")}
+                          </td>
+                        </tr>
+                      )}
+                      {displayResults.length > visibleResults.length && (
+                        <tr>
+                          <td colSpan={5} className="show-more-cell">
+                            <button
+                              type="button"
+                              className="btn"
+                              onClick={() => setVisibleCount((count) => count + 200)}
+                            >
+                              {t("calculate-show-more")}
+                            </button>
+                          </td>
+                        </tr>
+                      )}
+                    </>
                   )}
                 </tbody>
               </table>
@@ -962,9 +1181,9 @@ export function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {results.map((row, idx) => (
-                      <tr 
-                        key={idx}
+                    {results.map((row) => (
+                      <tr
+                        key={row.path}
                         onContextMenu={(e) => handleRowContextMenu(e, row)}
                       >
                         <td className="col-filename" title={row.path}>

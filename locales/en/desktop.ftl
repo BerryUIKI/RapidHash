@@ -37,6 +37,19 @@ table-column-status = Status
 table-column-digest = Checksum
 table-column-actions = Actions
 
+# Result table filtering and export
+calculate-filter-placeholder = Filter by name or path
+calculate-filter-status = Status filter
+calculate-filter-status-all = All statuses
+calculate-filter-status-ok = OK
+calculate-filter-status-mismatch = Mismatch
+calculate-filter-status-error = Errors
+calculate-showing-count = Showing { $visible } of { $total }
+calculate-show-more = Show more
+calculate-filter-empty = No results match the current filter.
+export-success = Exported to { $path }
+export-failure = Export failed: { $error }
+
 # Settings view
 settings-title = Application Settings
 settings-algorithms = Enabled Algorithms

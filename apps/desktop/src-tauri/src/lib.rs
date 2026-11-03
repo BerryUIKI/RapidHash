@@ -15,7 +15,7 @@ use rapidhash_formats::{
     format_gnu_manifest, format_sfv_manifest, parse_gnu_manifest, parse_sfv_manifest, ManifestEntry,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -175,6 +175,14 @@ fn get_locale_strings(locale: String) -> BTreeMap<String, String> {
         "settings-shell-integration-win11-note",
         "settings-shell-integration-unsupported",
         "shell-menu-entry-title",
+        "calculate-filter-placeholder",
+        "calculate-filter-status",
+        "calculate-filter-status-all",
+        "calculate-filter-status-ok",
+        "calculate-filter-status-mismatch",
+        "calculate-filter-status-error",
+        "calculate-show-more",
+        "calculate-filter-empty",
     ];
 
     let mut result = BTreeMap::new();
@@ -729,6 +737,147 @@ fn save_manifest_file(
     Ok(out_p.display().to_string())
 }
 
+/// Escape a value for RFC 4180 comma-separated output.
+fn csv_escape(value: &str) -> String {
+    if value.contains([',', '"', '\n', '\r']) {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value.to_string()
+    }
+}
+
+/// Render result records as CSV with a stable column order.
+///
+/// Fixed columns come first, followed by one column per digest algorithm found
+/// in the records, sorted by identifier.
+pub fn render_results_csv(items: &[FileResultDto]) -> String {
+    let mut algorithm_keys: BTreeSet<&str> = BTreeSet::new();
+    for item in items {
+        for key in item.digests.keys() {
+            algorithm_keys.insert(key.as_str());
+        }
+    }
+
+    let mut header = vec![
+        "path",
+        "file_name",
+        "size_bytes",
+        "status",
+        "error",
+        "filename_crc",
+    ];
+    header.extend(algorithm_keys.iter().copied());
+
+    let mut output = String::new();
+    output.push_str(
+        &header
+            .iter()
+            .map(|column| csv_escape(column))
+            .collect::<Vec<_>>()
+            .join(","),
+    );
+    output.push_str("\r\n");
+
+    for item in items {
+        let mut row = Vec::with_capacity(header.len());
+        row.push(csv_escape(&item.path));
+        row.push(csv_escape(&item.file_name));
+        row.push(
+            item.size_bytes
+                .map(|size| size.to_string())
+                .unwrap_or_default(),
+        );
+        row.push(csv_escape(item.status.as_deref().unwrap_or("")));
+        row.push(csv_escape(item.error.as_deref().unwrap_or("")));
+        row.push(csv_escape(item.filename_crc.as_deref().unwrap_or("")));
+        for key in &algorithm_keys {
+            row.push(csv_escape(
+                item.digests.get(*key).map(String::as_str).unwrap_or(""),
+            ));
+        }
+        output.push_str(&row.join(","));
+        output.push_str("\r\n");
+    }
+
+    output
+}
+
+#[tauri::command]
+fn save_results_file(
+    output_path: String,
+    format: String,
+    items: Vec<FileResultDto>,
+) -> Result<String, String> {
+    let out_p = PathBuf::from(&output_path);
+    let content = match format.as_str() {
+        "csv" => render_results_csv(&items),
+        "json" => serde_json::to_string_pretty(&items).map_err(|e| e.to_string())?,
+        other => return Err(format!("Unsupported export format: {other}")),
+    };
+
+    std::fs::write(&out_p, content).map_err(|e| e.to_string())?;
+    Ok(out_p.display().to_string())
+}
+
+#[cfg(test)]
+mod export_tests {
+    use super::*;
+
+    fn sample_item(path: &str, name: &str, digests: &[(&str, &str)]) -> FileResultDto {
+        FileResultDto {
+            path: path.to_string(),
+            file_name: name.to_string(),
+            size_bytes: Some(42),
+            digests: digests
+                .iter()
+                .map(|(key, value)| (key.to_string(), value.to_string()))
+                .collect(),
+            status: Some("Match".to_string()),
+            error: None,
+            filename_crc: None,
+        }
+    }
+
+    #[test]
+    fn csv_escapes_commas_quotes_and_newlines() {
+        let item = sample_item("C:\\data\\a,b.txt", "a,\"b\".txt", &[("sha256", "aa")]);
+        let csv = render_results_csv(&[item]);
+        assert!(csv.contains("\"C:\\data\\a,b.txt\""));
+        assert!(csv.contains("\"a,\"\"b\"\".txt\""));
+    }
+
+    #[test]
+    fn csv_uses_union_of_algorithm_columns() {
+        let first = sample_item(
+            "C:\\one.bin",
+            "one.bin",
+            &[("sha256", "aa"), ("crc32", "bb")],
+        );
+        let second = sample_item("C:\\two.bin", "two.bin", &[("blake3", "cc")]);
+        let csv = render_results_csv(&[first, second]);
+        let mut lines = csv.lines();
+
+        let header = lines.next().expect("header row");
+        assert_eq!(
+            header,
+            "path,file_name,size_bytes,status,error,filename_crc,blake3,crc32,sha256"
+        );
+
+        let first_row = lines.next().expect("first data row");
+        assert_eq!(first_row, "C:\\one.bin,one.bin,42,Match,,,,bb,aa");
+        let second_row = lines.next().expect("second data row");
+        assert_eq!(second_row, "C:\\two.bin,two.bin,42,Match,,,cc,,");
+    }
+
+    #[test]
+    fn json_export_preserves_records() {
+        let item = sample_item("C:\\one.bin", "one.bin", &[("sha256", "aa")]);
+        let json = serde_json::to_string_pretty(&vec![item]).expect("serialize results");
+        assert!(json.contains("\"file_name\": \"one.bin\""));
+        assert!(json.contains("\"sha256\": \"aa\""));
+    }
+}
+
 /// Pending paths passed via CLI arguments on launch.
 #[derive(Default)]
 pub struct PendingPaths(pub Mutex<Vec<String>>);
@@ -781,6 +930,7 @@ pub fn run() {
             verify_manifest_file,
             write_crc_to_filename,
             save_manifest_file,
+            save_results_file,
             take_pending_paths,
             get_shell_integration_status,
             set_shell_integration_enabled,

@@ -37,6 +37,19 @@ table-column-status = 状态
 table-column-digest = 校验和
 table-column-actions = 操作
 
+# 结果表筛选与导出
+calculate-filter-placeholder = 按文件名或路径筛选
+calculate-filter-status = 状态筛选
+calculate-filter-status-all = 全部状态
+calculate-filter-status-ok = 正常
+calculate-filter-status-mismatch = 不匹配
+calculate-filter-status-error = 错误
+calculate-showing-count = 显示 { $visible } / { $total } 项
+calculate-show-more = 显示更多
+calculate-filter-empty = 没有符合当前筛选条件的结果。
+export-success = 已导出至 { $path }
+export-failure = 导出失败：{ $error }
+
 # 设置视图
 settings-title = 应用设置
 settings-algorithms = 已启用的算法
