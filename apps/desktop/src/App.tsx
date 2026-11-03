@@ -13,15 +13,24 @@ import {
   Edit3,
   Save,
   Minimize2,
-  Maximize2
+  Maximize2,
+  Info
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { Locale, FALLBACK_STRINGS } from "./i18n";
 import { FoldableHash } from "./components/FoldableHash";
 import { ContextMenu, ContextMenuPosition, ContextMenuItemData } from "./components/ContextMenu";
 import { truncateMiddle, formatBytes } from "./utils/format";
+
+interface ShellIntegrationStatusDto {
+  supported: boolean;
+  enabled: boolean;
+  current_exe: string;
+  error?: string;
+}
 
 interface AlgorithmInfo {
   id: string;
@@ -119,6 +128,10 @@ export function App() {
     setCrcUppercase(uppercase);
     localStorage.setItem("rapidhash_crc_uppercase", uppercase.toString());
   };
+
+  // Windows Explorer context menu state
+  const [shellIntegration, setShellIntegration] = useState<ShellIntegrationStatusDto | null>(null);
+  const [isTogglingShellIntegration, setIsTogglingShellIntegration] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -236,6 +249,57 @@ export function App() {
 
     if (autoCalculate) {
       calculatePaths(newPaths);
+    }
+  };
+
+  // Single-instance incoming paths and cold boot arguments
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    async function initIncomingPaths() {
+      try {
+        const pending = await invoke<string[]>("take_pending_paths");
+        if (pending && pending.length > 0) {
+          setActiveTab("calculate");
+          handleIncomingPaths(pending);
+        }
+      } catch (err) {
+        console.warn("Failed to take pending paths:", err);
+      }
+
+      try {
+        unlisten = await listen<string[]>("incoming-paths", (event) => {
+          if (event.payload && event.payload.length > 0) {
+            setActiveTab("calculate");
+            handleIncomingPaths(event.payload);
+          }
+        });
+      } catch (err) {
+        console.warn("Failed to listen for incoming-paths:", err);
+      }
+    }
+
+    initIncomingPaths();
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, [autoCalculate, selectedAlgorithms]);
+
+  // Fetch shell integration status on mount
+  useEffect(() => {
+    invoke<ShellIntegrationStatusDto>("get_shell_integration_status")
+      .then((status) => setShellIntegration(status))
+      .catch((err) => console.warn("Failed to get shell integration status:", err));
+  }, []);
+
+  const handleToggleShellIntegration = async (enabled: boolean) => {
+    setIsTogglingShellIntegration(true);
+    try {
+      const updated = await invoke<ShellIntegrationStatusDto>("set_shell_integration_enabled", { enabled });
+      setShellIntegration(updated);
+    } catch (err) {
+      console.error("Failed to update shell integration:", err);
+    } finally {
+      setIsTogglingShellIntegration(false);
     }
   };
 
@@ -1065,6 +1129,45 @@ export function App() {
                       .replace("{crc}", crcUppercase ? "4E2A10FB" : "4e2a10fb")}.mkv
                   </strong>
                 </div>
+              </div>
+
+              {/* Windows Explorer Context Menu Settings */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: 16, border: "1px solid var(--border-color)", borderRadius: 8 }}>
+                <div style={{ fontWeight: 600, fontSize: "1rem" }}>{t("settings-shell-integration")}</div>
+                <div style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>
+                  {t("settings-shell-integration-desc")}
+                </div>
+
+                {!shellIntegration?.supported ? (
+                  <div style={{ padding: "8px 12px", backgroundColor: "var(--bg-tertiary)", borderRadius: 6, fontSize: "0.85rem", color: "var(--text-secondary)" }}>
+                    {t("settings-shell-integration-unsupported")}
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <span style={{ fontSize: "0.9rem", fontWeight: 500, color: shellIntegration.enabled ? "var(--success-color, #10b981)" : "var(--text-secondary)" }}>
+                        {shellIntegration.enabled ? "● " + (locale === "zh-CN" ? "已启用" : "Enabled") : "○ " + (locale === "zh-CN" ? "未启用" : "Disabled")}
+                      </span>
+                      <button
+                        className={`btn ${shellIntegration.enabled ? "" : "btn-primary"}`}
+                        onClick={() => handleToggleShellIntegration(!shellIntegration.enabled)}
+                        disabled={isTogglingShellIntegration}
+                        style={{ padding: "6px 16px", fontSize: "0.85rem" }}
+                      >
+                        {isTogglingShellIntegration
+                          ? "..."
+                          : shellIntegration.enabled
+                          ? (locale === "zh-CN" ? "关闭集成" : "Disable")
+                          : (locale === "zh-CN" ? "启用集成" : "Enable")}
+                      </button>
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "8px 12px", backgroundColor: "var(--bg-tertiary)", borderRadius: 6, fontSize: "0.8rem", color: "var(--text-secondary)" }}>
+                      <Info size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+                      <span>{t("settings-shell-integration-win11-note")}</span>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
